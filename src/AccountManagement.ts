@@ -22,6 +22,10 @@ export class AccountManagement extends SmartContract {
 
   @state(Field) startOfAllActions = State<Field>();
   @state(Field) accountNumber = State<Field>();
+  @state(Field) numberOfPendingActions = State<Field>();
+  @state(Field) actionTurn = State<Field>();
+  @state(Field) startOfActionsRange = State<Field>();
+  @state(Field) endOfActionsRange = State<Field>();
 
   deploy(args: DeployArgs) {
     super.deploy(args);
@@ -30,6 +34,10 @@ export class AccountManagement extends SmartContract {
     });
     this.startOfAllActions.set(Reducer.initialActionsHash);
     this.accountNumber.set(Field(0));
+    this.numberOfPendingActions.set(Field(0));
+    this.actionTurn.set(Field(0));
+    this.startOfActionsRange.set(Reducer.initialActionsHash);
+    this.endOfActionsRange.set(Reducer.initialActionsHash);
   }
 
   @method requestSignUp(publicKey: PublicKey) {
@@ -71,8 +79,58 @@ export class AccountManagement extends SmartContract {
 
     let account = Account.new(publicKey, accountNumber);
     this.reducer.dispatch(account);
-    
-    // Update current available account number
+
+    // Update current available account number.
     this.accountNumber.set(accountNumber.add(Field(1)));
+  }
+
+  @method setRangeOfActionsToBeProcessed() {
+    /* Get number of pending actions and make sure that there are no
+     * pending actions to be processed. */
+
+    const numberOfPendingActions = this.numberOfPendingActions.get();
+    this.numberOfPendingActions.assertEquals(numberOfPendingActions);
+    this.numberOfPendingActions.assertEquals(Field(0));
+
+    // Reset index for processing actions within the range.
+    this.actionTurn.set(Field(0));
+
+    /* Get the action hash of the last action that was processed, and
+     * use it as the starting point of the next range of actions
+     * to be processed. Then count all the actions within the new
+     * range, and get the action hash of the last action for the new
+     * range. */
+
+    const endOfActionsRange = this.endOfActionsRange.get();
+    this.endOfActionsRange.assertEquals(endOfActionsRange);
+
+    const actions = this.reducer.getActions({
+      fromActionHash: endOfActionsRange,
+    });
+
+    const {
+      state: newNumberOfPendingActions,
+      actionsHash: newEndOfActionsRange,
+    } = this.reducer.reduce(
+      actions,
+      Field,
+      (state: Field) => {
+        return state.add(Field(1));
+      },
+      { state: Field(0), actionsHash: endOfActionsRange }
+    );
+
+    // Set number of pending actions within the new range.
+    this.numberOfPendingActions.set(newNumberOfPendingActions);
+
+    /* Finally set the action hash of the last processed action as the
+     * start of the new range, and the action hash of the last action for
+     * the new range. */
+
+    const startOfActionsRange = this.startOfActionsRange.get();
+    this.startOfActionsRange.assertEquals(startOfActionsRange);
+
+    this.startOfActionsRange.set(endOfActionsRange);
+    this.endOfActionsRange.set(newEndOfActionsRange);
   }
 }

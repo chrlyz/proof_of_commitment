@@ -6,7 +6,7 @@ import {
   PublicKey,
   AccountUpdate,
   Reducer,
-  Field
+  Field,
 } from 'snarkyjs';
 
 import { AccountManagement } from './AccountManagement.js';
@@ -57,9 +57,17 @@ describe('AccountManagement', () => {
     await localDeploy();
     const startOfAllActions = zkApp.startOfAllActions.get();
     const accountNumber = zkApp.accountNumber.get();
+    const numberOfPendingActions = zkApp.numberOfPendingActions.get();
+    const actionTurn = zkApp.actionTurn.get();
+    const startOfActionsRange = zkApp.startOfActionsRange.get();
+    const endOfActionsRange = zkApp.endOfActionsRange.get();
 
     expect(startOfAllActions).toEqual(Reducer.initialActionsHash);
     expect(accountNumber).toEqual(Field(0));
+    expect(numberOfPendingActions).toEqual(Field(0));
+    expect(actionTurn).toEqual(Field(0));
+    expect(startOfActionsRange).toEqual(Reducer.initialActionsHash);
+    expect(endOfActionsRange).toEqual(Reducer.initialActionsHash);
   });
 
   it('emits proper sign-up request action when the `requestSignUp` method is executed', async () => {
@@ -132,5 +140,60 @@ describe('AccountManagement', () => {
         zkApp.requestSignUp(user1Account.toPublicKey());
       });
     }).rejects.toThrowError('assert_equal: 1 != 0');
+  });
+
+  test(`number of pending actions and the action hashes for the range remain unchanged when 'setRangeOfActionsToBeProcessed'
+        is executed when no actions have been emitted`, async () => {
+    await localDeploy();
+
+    const numberOfPendingActions = zkApp.numberOfPendingActions.get();
+    const startOfActionsRange = zkApp.startOfActionsRange.get();
+    const endOfActionsRange = zkApp.endOfActionsRange.get();
+
+    const txn = await Mina.transaction(user1Account, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn.prove();
+    await txn.send();
+
+    expect(numberOfPendingActions).toEqual(Field(0));
+    expect(startOfActionsRange).toEqual(Reducer.initialActionsHash);
+    expect(endOfActionsRange).toEqual(Reducer.initialActionsHash);
+  });
+
+  test(`number of pending actions and the action hash for the end of the range get updated properly when
+        'setRangeOfActionsToBeProcessed' is executed when 2 actions have been emitted`, async () => {
+    await localDeploy();
+
+    const txn1 = await Mina.transaction(user1Account, () => {
+      zkApp.requestSignUp(user1Account.toPublicKey());
+    });
+    await txn1.prove();
+    await txn1.sign([user1Account]).send();
+
+    const txn2 = await Mina.transaction(user2Account, () => {
+      zkApp.requestSignUp(user2Account.toPublicKey());
+    });
+    await txn2.prove();
+    await txn2.sign([user2Account]).send();
+
+    const txn3 = await Mina.transaction(user1Account, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn3.prove();
+    await txn3.send();
+
+    const numberOfPendingActions = zkApp.numberOfPendingActions.get();
+    const startOfActionsRange = zkApp.startOfActionsRange.get();
+    const endOfActionsRange = zkApp.endOfActionsRange.get();
+
+    const actions2D = zkApp.reducer.getActions({
+      fromActionHash: startOfActionsRange,
+      endActionHash: endOfActionsRange,
+    });
+    const actions = actions2D.flat();
+
+    expect(numberOfPendingActions).toEqual(Field(2));
+    expect(actions.length).toEqual(2);
   });
 });
