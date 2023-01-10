@@ -183,6 +183,7 @@ describe('AccountManagement', () => {
     await txn3.prove();
     await txn3.send();
 
+    const expectedNumberOfPendingActions = 2;
     const numberOfPendingActions = zkApp.numberOfPendingActions.get();
     const startOfActionsRange = zkApp.startOfActionsRange.get();
     const endOfActionsRange = zkApp.endOfActionsRange.get();
@@ -193,7 +194,9 @@ describe('AccountManagement', () => {
     });
     const actions = actions2D.flat();
 
-    expect(numberOfPendingActions).toEqual(Field(2));
-    expect(actions.length).toEqual(2);
+    expect(numberOfPendingActions).toEqual(
+      Field(expectedNumberOfPendingActions)
+    );
+    expect(actions.length).toEqual(expectedNumberOfPendingActions);
   });
 });
