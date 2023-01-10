@@ -11,11 +11,16 @@ import {
   state,
   Bool,
   AccountUpdate,
+  MerkleWitness,
+  Circuit,
+  provable,
 } from 'snarkyjs';
 
 import { Account } from './Account.js';
 
 await isReady;
+
+export class AccountWitness extends MerkleWitness(21) {}
 
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });
@@ -26,6 +31,7 @@ export class AccountManagement extends SmartContract {
   @state(Field) actionTurn = State<Field>();
   @state(Field) startOfActionsRange = State<Field>();
   @state(Field) endOfActionsRange = State<Field>();
+  @state(Field) accountsRoot = State<Field>();
 
   deploy(args: DeployArgs) {
     super.deploy(args);
@@ -38,6 +44,7 @@ export class AccountManagement extends SmartContract {
     this.actionTurn.set(Field(0));
     this.startOfActionsRange.set(Reducer.initialActionsHash);
     this.endOfActionsRange.set(Reducer.initialActionsHash);
+    this.accountsRoot.set(Field(0));
   }
 
   @method requestSignUp(publicKey: PublicKey) {
@@ -132,5 +139,55 @@ export class AccountManagement extends SmartContract {
 
     this.startOfActionsRange.set(endOfActionsRange);
     this.endOfActionsRange.set(newEndOfActionsRange);
+  }
+
+  @method processSignUpRequestAction(accountWitness: AccountWitness) {
+    const startOfActionsRange = this.startOfActionsRange.get();
+    this.startOfActionsRange.assertEquals(startOfActionsRange);
+
+    const endOfActionsRange = this.endOfActionsRange.get();
+    this.endOfActionsRange.assertEquals(endOfActionsRange);
+
+    const actionTurn = this.actionTurn.get();
+    this.actionTurn.assertEquals(actionTurn);
+
+    const actions = this.reducer.getActions({
+      fromActionHash: startOfActionsRange,
+      endActionHash: endOfActionsRange,
+    });
+
+    const stateType = provable({ index: Field, accountsRoot: Field });
+
+    const { state: processedAction } = this.reducer.reduce(
+      actions,
+      stateType,
+      (state, action) => {
+        let isCurrentAction = state.index.equals(actionTurn);
+        let typedAction = new Account({
+          publicKey: action.publicKey,
+          accountNumber: action.accountNumber,
+        });
+        let newAccountsRoot = accountWitness.calculateRoot(typedAction.hash());
+
+        return {
+          index: state.index.add(1),
+          accountsRoot: state.accountsRoot.add(
+            Circuit.if(isCurrentAction, newAccountsRoot, state.accountsRoot)
+          ),
+        };
+      },
+      {
+        state: { index: Field(0), accountsRoot: Field(0) },
+        actionsHash: startOfActionsRange,
+      }
+    );
+
+    this.actionTurn.set(actionTurn.add(1));
+
+    this.accountsRoot.set(processedAction.accountsRoot);
+
+    const numberOfPendingActions = this.numberOfPendingActions.get();
+    this.numberOfPendingActions.assertEquals(numberOfPendingActions);
+    this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
   }
 }

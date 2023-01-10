@@ -7,9 +7,11 @@ import {
   AccountUpdate,
   Reducer,
   Field,
+  MerkleTree,
 } from 'snarkyjs';
+import { Account } from './Account.js';
 
-import { AccountManagement } from './AccountManagement.js';
+import { AccountManagement, AccountWitness } from './AccountManagement.js';
 
 let proofsEnabled = true;
 
@@ -198,5 +200,78 @@ describe('AccountManagement', () => {
       Field(expectedNumberOfPendingActions)
     );
     expect(actions.length).toEqual(expectedNumberOfPendingActions);
+  });
+
+  test(`process sign-up requests by adding the requesting accounts to the merkle tree when executing 'processSignUpRequestAction'`, async () => {
+    await localDeploy();
+
+    const txn1 = await Mina.transaction(user1Account, () => {
+      zkApp.requestSignUp(user1Account.toPublicKey());
+    });
+    await txn1.prove();
+    await txn1.sign([user1Account]).send();
+
+    const txn2 = await Mina.transaction(user2Account, () => {
+      zkApp.requestSignUp(user2Account.toPublicKey());
+    });
+    await txn2.prove();
+    await txn2.sign([user2Account]).send();
+
+    const txn3 = await Mina.transaction(deployerAccount, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn3.prove();
+    await txn3.send();
+
+    const user1AccountAsAction = new Account({
+      publicKey: user1Account.toPublicKey(),
+      accountNumber: Field(0),
+    });
+    const user2AccountAsAction = new Account({
+      publicKey: user2Account.toPublicKey(),
+      accountNumber: Field(1),
+    });
+
+    let expectedTree = new MerkleTree(21);
+    expectedTree.setLeaf(0n, user1AccountAsAction.hash());
+    expectedTree.setLeaf(1n, user2AccountAsAction.hash());
+    const expectedTreeRoot = expectedTree.getRoot();
+
+    const startOfActionsRange = zkApp.startOfActionsRange.get();
+    const endOfActionsRange = zkApp.endOfActionsRange.get();
+
+    const actions2D = zkApp.reducer.getActions({
+      fromActionHash: startOfActionsRange,
+      endActionHash: endOfActionsRange,
+    });
+    const actions = actions2D.flat();
+
+    let tree = new MerkleTree(21);
+
+    async function processActions(
+      actions: { publicKey: PublicKey; accountNumber: Field }[]
+    ) {
+      for (let action of actions) {
+        let typedAction = new Account({
+          publicKey: action.publicKey,
+          accountNumber: action.accountNumber,
+        });
+        tree.setLeaf(action.accountNumber.toBigInt(), typedAction.hash());
+        let aw = tree.getWitness(action.accountNumber.toBigInt());
+        let accountWitness = new AccountWitness(aw);
+
+        const txn = await Mina.transaction(deployerAccount, () => {
+          zkApp.processSignUpRequestAction(accountWitness);
+        });
+        await txn.prove();
+        await txn.send();
+      }
+    }
+
+    await processActions(actions);
+
+    expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot);
+    expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
+    expect(zkApp.actionTurn.get()).toEqual(Field(2));
   });
 });
