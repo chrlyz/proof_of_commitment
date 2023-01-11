@@ -274,4 +274,35 @@ describe('AccountManagement', () => {
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
     expect(zkApp.actionTurn.get()).toEqual(Field(2));
   });
+
+  test(`executing 'processSignUpRequestAction' by feeding it a witness from an account set in the merkle tree with an index
+        not corresponding to the account number should throw an error`, async () => {
+    await localDeploy();
+
+    const txn1 = await Mina.transaction(user1Account, () => {
+      zkApp.requestSignUp(user1Account.toPublicKey());
+    });
+    await txn1.prove();
+    await txn1.sign([user1Account]).send();
+
+    const txn2 = await Mina.transaction(deployerAccount, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn2.prove();
+    await txn2.send();
+
+    const user1AccountAsAction = new Account({
+      publicKey: user1Account.toPublicKey(),
+      accountNumber: Field(0),
+    });
+
+    let tree = new MerkleTree(21);
+    tree.setLeaf(1n, user1AccountAsAction.hash());
+    let aw = tree.getWitness(1n);
+    let accountWitness = new AccountWitness(aw);
+
+    expect(async () => {
+      zkApp.processSignUpRequestAction(accountWitness);
+    }).rejects.toThrowError('assert_equal: 1 != 0');
+  });
 });

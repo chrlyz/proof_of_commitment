@@ -156,35 +156,51 @@ export class AccountManagement extends SmartContract {
       endActionHash: endOfActionsRange,
     });
 
-    const stateType = provable({ index: Field, accountsRoot: Field });
+    const stateType = provable({
+      index: Field,
+      publicKey: PublicKey,
+      accountNumber: Field,
+    });
 
-    const { state: processedAction } = this.reducer.reduce(
+    const { state: action } = this.reducer.reduce(
       actions,
       stateType,
       (state, action) => {
         let isCurrentAction = state.index.equals(actionTurn);
-        let typedAction = new Account({
-          publicKey: action.publicKey,
-          accountNumber: action.accountNumber,
-        });
-        let newAccountsRoot = accountWitness.calculateRoot(typedAction.hash());
-
         return {
           index: state.index.add(1),
-          accountsRoot: state.accountsRoot.add(
-            Circuit.if(isCurrentAction, newAccountsRoot, state.accountsRoot)
+          publicKey: Circuit.if(
+            isCurrentAction,
+            action.publicKey,
+            state.publicKey
+          ),
+          accountNumber: Circuit.if(
+            isCurrentAction,
+            action.accountNumber,
+            state.accountNumber
           ),
         };
       },
       {
-        state: { index: Field(0), accountsRoot: Field(0) },
+        state: {
+          index: Field(0),
+          publicKey: PublicKey.empty(),
+          accountNumber: Field(0),
+        },
         actionsHash: startOfActionsRange,
       }
     );
 
-    this.actionTurn.set(actionTurn.add(1));
+    let typedAction = new Account({
+      publicKey: action.publicKey,
+      accountNumber: action.accountNumber,
+    });
 
-    this.accountsRoot.set(processedAction.accountsRoot);
+    accountWitness.calculateIndex().assertEquals(typedAction.accountNumber);
+
+    this.accountsRoot.set(accountWitness.calculateRoot(typedAction.hash()));
+
+    this.actionTurn.set(actionTurn.add(1));
 
     const numberOfPendingActions = this.numberOfPendingActions.get();
     this.numberOfPendingActions.assertEquals(numberOfPendingActions);
