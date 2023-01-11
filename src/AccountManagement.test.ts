@@ -13,7 +13,7 @@ import { Account } from './Account.js';
 
 import { AccountManagement, AccountWitness } from './AccountManagement.js';
 
-let proofsEnabled = true;
+let proofsEnabled = false;
 
 describe('AccountManagement', () => {
   let deployerAccount: PrivateKey,

@@ -142,6 +142,9 @@ export class AccountManagement extends SmartContract {
   }
 
   @method processSignUpRequestAction(accountWitness: AccountWitness) {
+    /* Traverse current range of pending actions, to recover
+     * the current action that needs to be processed. */
+
     const startOfActionsRange = this.startOfActionsRange.get();
     this.startOfActionsRange.assertEquals(startOfActionsRange);
 
@@ -191,12 +194,20 @@ export class AccountManagement extends SmartContract {
       }
     );
 
+    /* Use the values of the recovered action to intantiate the action
+     * with its proper Account type, so its methods become available. */
     let typedAction = new Account({
       publicKey: action.publicKey,
       accountNumber: action.accountNumber,
     });
 
+    /* Validate that the account was registered using the account number
+     * as the index for the merkle tree. */
     accountWitness.calculateIndex().assertEquals(typedAction.accountNumber);
+
+    /* Finally update the merkle tree root so it includes the new registered
+     * account. Advance to the turn of the next action to be processed, and
+     * decrease the number of pending actions.  */
 
     this.accountsRoot.set(accountWitness.calculateRoot(typedAction.hash()));
 
