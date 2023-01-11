@@ -20,8 +20,8 @@ describe('AccountManagement', () => {
     zkAppAddress: PublicKey,
     zkappKey: PrivateKey,
     zkApp: AccountManagement,
-    user1Account: PrivateKey,
-    user2Account: PrivateKey;
+    user1PrivateKey: PrivateKey,
+    user2PrivateKey: PrivateKey;
 
   beforeAll(async () => {
     await isReady;
@@ -35,8 +35,8 @@ describe('AccountManagement', () => {
     zkappKey = PrivateKey.random();
     zkAppAddress = zkappKey.toPublicKey();
     zkApp = new AccountManagement(zkAppAddress);
-    user1Account = Local.testAccounts[1].privateKey;
-    user2Account = Local.testAccounts[2].privateKey;
+    user1PrivateKey = Local.testAccounts[1].privateKey;
+    user2PrivateKey = Local.testAccounts[2].privateKey;
   });
 
   afterAll(() => {
@@ -77,11 +77,11 @@ describe('AccountManagement', () => {
   it('emits proper sign-up request action when the `requestSignUp` method is executed', async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1Account, () => {
-      zkApp.requestSignUp(user1Account.toPublicKey());
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
     });
     await txn1.prove();
-    await txn1.sign([user1Account]).send();
+    await txn1.sign([user1PrivateKey]).send();
 
     const actions2D = zkApp.reducer.getActions({
       fromActionHash: zkApp.startOfAllActions.get(),
@@ -95,17 +95,17 @@ describe('AccountManagement', () => {
   it('emits 2 proper sign-up request actions when the `requestSignUp` method is executed 2 times with different accounts', async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1Account, () => {
-      zkApp.requestSignUp(user1Account.toPublicKey());
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
     });
     await txn1.prove();
-    await txn1.sign([user1Account]).send();
+    await txn1.sign([user1PrivateKey]).send();
 
-    const txn2 = await Mina.transaction(user2Account, () => {
-      zkApp.requestSignUp(user2Account.toPublicKey());
+    const txn2 = await Mina.transaction(user2PrivateKey, () => {
+      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
     });
     await txn2.prove();
-    await txn2.sign([user2Account]).send();
+    await txn2.sign([user2PrivateKey]).send();
 
     const actions2D = zkApp.reducer.getActions({
       fromActionHash: zkApp.startOfAllActions.get(),
@@ -120,8 +120,8 @@ describe('AccountManagement', () => {
   it('throws an error when a `requestSignUp` transaction is not signed by the account requesting to sign-up', async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1Account, () => {
-      zkApp.requestSignUp(user1Account.toPublicKey());
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
     });
     await txn1.prove();
 
@@ -133,15 +133,15 @@ describe('AccountManagement', () => {
   it('throws an error when `requestSignUp` is called with an account already requested to be signed-up', async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1Account, () => {
-      zkApp.requestSignUp(user1Account.toPublicKey());
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
     });
     await txn1.prove();
-    await txn1.sign([user1Account]).send();
+    await txn1.sign([user1PrivateKey]).send();
 
     expect(async () => {
-      await Mina.transaction(user1Account, () => {
-        zkApp.requestSignUp(user1Account.toPublicKey());
+      await Mina.transaction(user1PrivateKey, () => {
+        zkApp.requestSignUp(user1PrivateKey.toPublicKey());
       });
     }).rejects.toThrowError('assert_equal: 1 != 0');
   });
@@ -154,7 +154,7 @@ describe('AccountManagement', () => {
     const startOfActionsRange = zkApp.startOfActionsRange.get();
     const endOfActionsRange = zkApp.endOfActionsRange.get();
 
-    const txn = await Mina.transaction(user1Account, () => {
+    const txn = await Mina.transaction(user1PrivateKey, () => {
       zkApp.setRangeOfActionsToBeProcessed();
     });
     await txn.prove();
@@ -169,19 +169,19 @@ describe('AccountManagement', () => {
         'setRangeOfActionsToBeProcessed' is executed when 2 actions have been emitted`, async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1Account, () => {
-      zkApp.requestSignUp(user1Account.toPublicKey());
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
     });
     await txn1.prove();
-    await txn1.sign([user1Account]).send();
+    await txn1.sign([user1PrivateKey]).send();
 
-    const txn2 = await Mina.transaction(user2Account, () => {
-      zkApp.requestSignUp(user2Account.toPublicKey());
+    const txn2 = await Mina.transaction(user2PrivateKey, () => {
+      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
     });
     await txn2.prove();
-    await txn2.sign([user2Account]).send();
+    await txn2.sign([user2PrivateKey]).send();
 
-    const txn3 = await Mina.transaction(user1Account, () => {
+    const txn3 = await Mina.transaction(user1PrivateKey, () => {
       zkApp.setRangeOfActionsToBeProcessed();
     });
     await txn3.prove();
@@ -207,17 +207,17 @@ describe('AccountManagement', () => {
   test(`process sign-up requests by adding the requesting accounts to the merkle tree when executing 'processSignUpRequestAction'`, async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1Account, () => {
-      zkApp.requestSignUp(user1Account.toPublicKey());
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
     });
     await txn1.prove();
-    await txn1.sign([user1Account]).send();
+    await txn1.sign([user1PrivateKey]).send();
 
-    const txn2 = await Mina.transaction(user2Account, () => {
-      zkApp.requestSignUp(user2Account.toPublicKey());
+    const txn2 = await Mina.transaction(user2PrivateKey, () => {
+      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
     });
     await txn2.prove();
-    await txn2.sign([user2Account]).send();
+    await txn2.sign([user2PrivateKey]).send();
 
     const txn3 = await Mina.transaction(deployerAccount, () => {
       zkApp.setRangeOfActionsToBeProcessed();
@@ -225,18 +225,18 @@ describe('AccountManagement', () => {
     await txn3.prove();
     await txn3.send();
 
-    const user1AccountAsAction = new Account({
-      publicKey: user1Account.toPublicKey(),
+    const user1AsAccount = new Account({
+      publicKey: user1PrivateKey.toPublicKey(),
       accountNumber: Field(0),
     });
-    const user2AccountAsAction = new Account({
-      publicKey: user2Account.toPublicKey(),
+    const user2AsAccount = new Account({
+      publicKey: user2PrivateKey.toPublicKey(),
       accountNumber: Field(1),
     });
 
     let expectedTree = new MerkleTree(21);
-    expectedTree.setLeaf(0n, user1AccountAsAction.hash());
-    expectedTree.setLeaf(1n, user2AccountAsAction.hash());
+    expectedTree.setLeaf(0n, user1AsAccount.hash());
+    expectedTree.setLeaf(1n, user2AsAccount.hash());
     const expectedTreeRoot = expectedTree.getRoot();
 
     const startOfActionsRange = zkApp.startOfActionsRange.get();
@@ -281,11 +281,11 @@ describe('AccountManagement', () => {
         not corresponding to the account number should throw an error`, async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1Account, () => {
-      zkApp.requestSignUp(user1Account.toPublicKey());
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
     });
     await txn1.prove();
-    await txn1.sign([user1Account]).send();
+    await txn1.sign([user1PrivateKey]).send();
 
     const txn2 = await Mina.transaction(deployerAccount, () => {
       zkApp.setRangeOfActionsToBeProcessed();
@@ -293,13 +293,13 @@ describe('AccountManagement', () => {
     await txn2.prove();
     await txn2.send();
 
-    const user1AccountAsAction = new Account({
-      publicKey: user1Account.toPublicKey(),
+    const user1AsAccount = new Account({
+      publicKey: user1PrivateKey.toPublicKey(),
       accountNumber: Field(0),
     });
 
     let tree = new MerkleTree(21);
-    tree.setLeaf(1n, user1AccountAsAction.hash());
+    tree.setLeaf(1n, user1AsAccount.hash());
     let aw = tree.getWitness(1n);
     let accountWitness = new AccountWitness(aw);
 
