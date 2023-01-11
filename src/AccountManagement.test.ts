@@ -63,6 +63,7 @@ describe('AccountManagement', () => {
     const actionTurn = zkApp.actionTurn.get();
     const startOfActionsRange = zkApp.startOfActionsRange.get();
     const endOfActionsRange = zkApp.endOfActionsRange.get();
+    const accountsRoot = zkApp.accountsRoot.get();
 
     expect(startOfAllActions).toEqual(Reducer.initialActionsHash);
     expect(accountNumber).toEqual(Field(0));
@@ -70,6 +71,7 @@ describe('AccountManagement', () => {
     expect(actionTurn).toEqual(Field(0));
     expect(startOfActionsRange).toEqual(Reducer.initialActionsHash);
     expect(endOfActionsRange).toEqual(Reducer.initialActionsHash);
+    expect(accountsRoot).toEqual(Field(0));
   });
 
   it('emits proper sign-up request action when the `requestSignUp` method is executed', async () => {
