@@ -89,6 +89,7 @@ describe('AccountManagement', () => {
     const actions = actions2D.flat();
 
     expect(actions.length).toEqual(1);
+    expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
     expect(actions[0].accountNumber).toEqual(Field(0));
   });
 
