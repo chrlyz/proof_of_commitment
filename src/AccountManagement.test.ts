@@ -8,6 +8,7 @@ import {
   Reducer,
   Field,
   MerkleTree,
+  UInt64,
 } from 'snarkyjs';
 import { Account } from './Account.js';
 
@@ -129,6 +130,20 @@ describe('AccountManagement', () => {
     expect(async () => {
       await txn1.send();
     }).rejects.toThrowError('private key is missing');
+  });
+
+  it('sends 5 MINA to the contract when a `requestSignUp` transaction is sent', async () => {
+    await localDeploy();
+
+    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
+
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
+    });
+    await txn1.prove();
+    await txn1.sign([user1PrivateKey]).send();
+
+    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(5_000_000_000));
   });
 
   it('throws an error when `requestSignUp` is called with an account already requested to be signed-up', async () => {

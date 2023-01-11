@@ -48,12 +48,27 @@ export class AccountManagement extends SmartContract {
   }
 
   @method requestSignUp(publicKey: PublicKey) {
-    /*Require signature of the account requesting signing-up,
-     *so only the user themselves can request to sign-up.
+    /* Require signature of the account requesting signing-up,
+     * so only the user themselves can request to sign-up. User
+     * also sends 5 MINA to be able to start using the service
+     * as soon as the request gets processed (This allows sevice
+     * providers to see that the user has funds, so they have the
+     * incentive to serve the user).
+     *
+     * TODO: set Permissions.send to Permissions.proof so no one can
+     * spend the funds sent by the users to the contract unless the
+     * user frees the funds through the execution of the 'freeFunds'
+     * (to be implemented). Providers would prompt users to free funds
+     * through this method, after providing certain amount of services
+     * that they consider deserve a reward. Users can refuse, incentivizing
+     * providers to do better, while the provider can stop providing services
+     * until user frees some funds, promoting cooperation and searching for
+     * an equilibrium.
      */
 
     let accountUpdate = AccountUpdate.create(publicKey);
     accountUpdate.requireSignature();
+    accountUpdate.send({ to: this.address, amount: 5_000_000_000 });
 
     /* Get the current available account number to assign to
      * the user if a successful sign-up request is emitted. */
