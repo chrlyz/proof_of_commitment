@@ -175,20 +175,16 @@ export class AccountManagement extends SmartContract {
       endActionHash: endOfActionsRange,
     });
 
-    const stateType = provable({
-      index: Field,
-      publicKey: PublicKey,
-      accountNumber: Field,
-      balance: UInt64,
-    });
+    const stateType = provable(Account);
 
+    let index = Field(0);
     const { state: action } = this.reducer.reduce(
       actions,
       stateType,
       (state, action) => {
-        let isCurrentAction = state.index.equals(actionTurn);
+        let isCurrentAction = index.equals(actionTurn);
+        index = index.add(1);
         return {
-          index: state.index.add(1),
           publicKey: Circuit.if(
             isCurrentAction,
             action.publicKey,
@@ -204,7 +200,6 @@ export class AccountManagement extends SmartContract {
       },
       {
         state: {
-          index: Field(0),
           publicKey: PublicKey.empty(),
           accountNumber: Field(0),
           balance: UInt64.from(0),

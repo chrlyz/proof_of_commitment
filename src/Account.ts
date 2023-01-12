@@ -27,3 +27,9 @@ export class Account extends Struct({
     );
   }
 }
+
+export class AccountShape extends Struct({
+  publicKey: PublicKey,
+  accountNumber: Field,
+  balance: UInt64,
+}) {}

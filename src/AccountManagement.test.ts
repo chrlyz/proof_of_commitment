@@ -11,7 +11,12 @@ import {
   UInt64,
 } from 'snarkyjs';
 
-import { Account, AccountWitness, initialBalance } from './Account.js';
+import {
+  Account,
+  AccountShape,
+  AccountWitness,
+  initialBalance,
+} from './Account.js';
 
 import { AccountManagement } from './AccountManagement.js';
 
@@ -274,9 +279,7 @@ describe('AccountManagement', () => {
 
     let tree = new MerkleTree(21);
 
-    async function processActions(
-      actions: { publicKey: PublicKey; accountNumber: Field; balance: UInt64 }[]
-    ) {
+    async function processActions(actions: AccountShape[]) {
       for (let action of actions) {
         let typedAction = new Account({
           publicKey: action.publicKey,
