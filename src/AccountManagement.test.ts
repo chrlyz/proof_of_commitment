@@ -10,9 +10,10 @@ import {
   MerkleTree,
   UInt64,
 } from 'snarkyjs';
-import { Account } from './Account.js';
 
-import { AccountManagement, AccountWitness } from './AccountManagement.js';
+import { Account, AccountWitness, initialBalance } from './Account.js';
+
+import { AccountManagement } from './AccountManagement.js';
 
 let proofsEnabled = false;
 
@@ -92,6 +93,7 @@ describe('AccountManagement', () => {
     expect(actions.length).toEqual(1);
     expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
     expect(actions[0].accountNumber).toEqual(Field(0));
+    expect(actions[0].balance).toEqual(initialBalance);
   });
 
   it('emits 2 proper sign-up request actions when the `requestSignUp` method is executed 2 times with different accounts', async () => {
@@ -115,8 +117,12 @@ describe('AccountManagement', () => {
     const actions = actions2D.flat();
 
     expect(actions.length).toEqual(2);
+    expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
     expect(actions[0].accountNumber).toEqual(Field(0));
+    expect(actions[0].balance).toEqual(initialBalance);
+    expect(actions[1].publicKey).toEqual(user2PrivateKey.toPublicKey());
     expect(actions[1].accountNumber).toEqual(Field(1));
+    expect(actions[1].balance).toEqual(initialBalance);
   });
 
   it('throws an error when a `requestSignUp` transaction is not signed by the account requesting to sign-up', async () => {
@@ -143,7 +149,7 @@ describe('AccountManagement', () => {
     await txn1.prove();
     await txn1.sign([user1PrivateKey]).send();
 
-    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(5_000_000_000));
+    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(initialBalance));
   });
 
   it('throws an error when `requestSignUp` is called with an account already requested to be signed-up', async () => {
@@ -244,10 +250,12 @@ describe('AccountManagement', () => {
     const user1AsAccount = new Account({
       publicKey: user1PrivateKey.toPublicKey(),
       accountNumber: Field(0),
+      balance: initialBalance,
     });
     const user2AsAccount = new Account({
       publicKey: user2PrivateKey.toPublicKey(),
       accountNumber: Field(1),
+      balance: initialBalance,
     });
 
     let expectedTree = new MerkleTree(21);
@@ -267,12 +275,13 @@ describe('AccountManagement', () => {
     let tree = new MerkleTree(21);
 
     async function processActions(
-      actions: { publicKey: PublicKey; accountNumber: Field }[]
+      actions: { publicKey: PublicKey; accountNumber: Field; balance: UInt64 }[]
     ) {
       for (let action of actions) {
         let typedAction = new Account({
           publicKey: action.publicKey,
           accountNumber: action.accountNumber,
+          balance: action.balance,
         });
         tree.setLeaf(action.accountNumber.toBigInt(), typedAction.hash());
         let aw = tree.getWitness(action.accountNumber.toBigInt());
@@ -312,6 +321,7 @@ describe('AccountManagement', () => {
     const user1AsAccount = new Account({
       publicKey: user1PrivateKey.toPublicKey(),
       accountNumber: Field(0),
+      balance: initialBalance,
     });
 
     let tree = new MerkleTree(21);

@@ -11,16 +11,14 @@ import {
   state,
   Bool,
   AccountUpdate,
-  MerkleWitness,
   Circuit,
   provable,
+  UInt64,
 } from 'snarkyjs';
 
-import { Account } from './Account.js';
+import { Account, AccountWitness, initialBalance } from './Account.js';
 
 await isReady;
-
-export class AccountWitness extends MerkleWitness(21) {}
 
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });
@@ -51,8 +49,8 @@ export class AccountManagement extends SmartContract {
     /* Require signature of the account requesting signing-up,
      * so only the user themselves can request to sign-up. User
      * also sends 5 MINA to be able to start using the service
-     * as soon as the request gets processed (This allows sevice
-     * providers to see that the user has funds, so they have the
+     * immediately after signing-up (This allows sevice providers
+     * to see that the user has funds, so they have the
      * incentive to serve the user).
      *
      * TODO: set Permissions.send to Permissions.proof so no one can
@@ -68,19 +66,18 @@ export class AccountManagement extends SmartContract {
 
     let accountUpdate = AccountUpdate.create(publicKey);
     accountUpdate.requireSignature();
-    accountUpdate.send({ to: this.address, amount: 5_000_000_000 });
+    accountUpdate.send({ to: this.address, amount: initialBalance });
 
     /* Get the current available account number to assign to
-     * the user if a successful sign-up request is emitted. */
-
+     * the user.
+     */
     const accountNumber = this.accountNumber.get();
     this.accountNumber.assertEquals(accountNumber);
 
     /* Check all actions to see if the public key isn't
      * already registered. If not, emit action representing
-     * the request.
+     * the sign-up request.
      */
-
     const startOfAllActions = this.startOfAllActions.get();
     this.startOfAllActions.assertEquals(startOfAllActions);
 
@@ -99,7 +96,11 @@ export class AccountManagement extends SmartContract {
 
     exists.assertEquals(Bool(false));
 
-    let account = Account.new(publicKey, accountNumber);
+    let account = new Account({
+      publicKey: publicKey,
+      accountNumber: accountNumber,
+      balance: initialBalance,
+    });
     this.reducer.dispatch(account);
 
     // Update current available account number.
@@ -178,6 +179,7 @@ export class AccountManagement extends SmartContract {
       index: Field,
       publicKey: PublicKey,
       accountNumber: Field,
+      balance: UInt64,
     });
 
     const { state: action } = this.reducer.reduce(
@@ -197,6 +199,7 @@ export class AccountManagement extends SmartContract {
             action.accountNumber,
             state.accountNumber
           ),
+          balance: Circuit.if(isCurrentAction, action.balance, state.balance),
         };
       },
       {
@@ -204,26 +207,30 @@ export class AccountManagement extends SmartContract {
           index: Field(0),
           publicKey: PublicKey.empty(),
           accountNumber: Field(0),
+          balance: UInt64.from(0),
         },
         actionsHash: startOfActionsRange,
       }
     );
 
     /* Use the values of the recovered action to intantiate the action
-     * with its proper Account type, so its methods become available. */
+     * with its proper Account type, so its methods become available.
+     */
     let typedAction = new Account({
       publicKey: action.publicKey,
       accountNumber: action.accountNumber,
+      balance: action.balance,
     });
 
     /* Validate that the account was registered using the account number
-     * as the index for the merkle tree. */
+     * as the index for the merkle tree.
+     */
     accountWitness.calculateIndex().assertEquals(typedAction.accountNumber);
 
-    /* Finally update the merkle tree root so it includes the new registered
+    /* Finally update the merkle tree root, so it includes the new registered
      * account. Advance to the turn of the next action to be processed, and
-     * decrease the number of pending actions.  */
-
+     * decrease the number of pending actions to account for the one we processed.
+     */
     this.accountsRoot.set(accountWitness.calculateRoot(typedAction.hash()));
 
     this.actionTurn.set(actionTurn.add(1));

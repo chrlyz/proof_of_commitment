@@ -1,29 +1,29 @@
-import { Field,
+import {
+  Field,
+  isReady,
   Poseidon,
   PublicKey,
-  Struct } from 'snarkyjs';
+  Struct,
+  UInt64,
+  MerkleWitness,
+} from 'snarkyjs';
+
+await isReady;
+
+export const initialBalance = UInt64.from(5_000_000_000);
+export class AccountWitness extends MerkleWitness(21) {}
 
 export class Account extends Struct({
-
   publicKey: PublicKey,
-  accountNumber: Field
-
+  accountNumber: Field,
+  balance: UInt64,
 }) {
-
-  static new(publicKey: PublicKey,
-             accountNumber: Field): Account {
-
-      return new Account({
-        publicKey: publicKey,
-        accountNumber: accountNumber
-      });
-
-  }
-
   hash(): Field {
-
-    return Poseidon.hash(this.publicKey.toFields()
-          .concat(this.accountNumber.toFields()));
-
+    return Poseidon.hash(
+      this.publicKey
+        .toFields()
+        .concat(this.accountNumber.toFields())
+        .concat(this.balance.toFields())
+    );
   }
 }
