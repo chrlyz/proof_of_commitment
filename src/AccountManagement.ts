@@ -14,6 +14,7 @@ import {
   Circuit,
   provable,
   UInt64,
+  UInt32,
 } from 'snarkyjs';
 
 import { Account, AccountWitness, initialBalance } from './Account.js';
@@ -35,6 +36,7 @@ export class AccountManagement extends SmartContract {
     super.deploy(args);
     this.setPermissions({
       ...Permissions.default(),
+      send: Permissions.proof(),
     });
     this.startOfAllActions.set(Reducer.initialActionsHash);
     this.accountNumber.set(Field(0));
@@ -52,16 +54,6 @@ export class AccountManagement extends SmartContract {
      * immediately after signing-up (This allows sevice providers
      * to see that the user has funds, so they have the
      * incentive to serve the user).
-     *
-     * TODO: set Permissions.send to Permissions.proof so no one can
-     * spend the funds sent by the users to the contract unless the
-     * user frees the funds through the execution of the 'freeFunds'
-     * (to be implemented). Providers would prompt users to free funds
-     * through this method, after providing certain amount of services
-     * that they consider deserve a reward. Users can refuse, incentivizing
-     * providers to do better, while the provider can stop providing services
-     * until user frees some funds, promoting cooperation and searching for
-     * an equilibrium.
      */
 
     let accountUpdate = AccountUpdate.create(publicKey);
@@ -100,6 +92,7 @@ export class AccountManagement extends SmartContract {
       publicKey: publicKey,
       accountNumber: accountNumber,
       balance: initialBalance,
+      actionOrigin: UInt32.from(1),
     });
     this.reducer.dispatch(account);
 
@@ -196,6 +189,11 @@ export class AccountManagement extends SmartContract {
             state.accountNumber
           ),
           balance: Circuit.if(isCurrentAction, action.balance, state.balance),
+          actionOrigin: Circuit.if(
+            isCurrentAction,
+            action.actionOrigin,
+            state.actionOrigin
+          ),
         };
       },
       {
@@ -203,6 +201,7 @@ export class AccountManagement extends SmartContract {
           publicKey: PublicKey.empty(),
           accountNumber: Field(0),
           balance: UInt64.from(0),
+          actionOrigin: UInt32.from(0),
         },
         actionsHash: startOfActionsRange,
       }
@@ -215,6 +214,7 @@ export class AccountManagement extends SmartContract {
       publicKey: action.publicKey,
       accountNumber: action.accountNumber,
       balance: action.balance,
+      actionOrigin: action.actionOrigin,
     });
 
     /* Validate that the account was registered using the account number
@@ -233,5 +233,19 @@ export class AccountManagement extends SmartContract {
     const numberOfPendingActions = this.numberOfPendingActions.get();
     this.numberOfPendingActions.assertEquals(numberOfPendingActions);
     this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
+  }
+
+  @method releaseFunds(from: PublicKey, to: PublicKey, amount: UInt64) {
+    AccountUpdate.create(from).requireSignature();
+    this.send({ to, amount });
+
+    const action = new Account({
+      publicKey: from,
+      accountNumber: Field(0),
+      balance: amount,
+      actionOrigin: UInt32.from(2),
+    });
+
+    this.reducer.dispatch(action);
   }
 }
