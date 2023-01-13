@@ -255,7 +255,7 @@ describe('AccountManagement', () => {
     expect(actions.length).toEqual(expectedNumberOfPendingActions);
   });
 
-  test(`process sign-up requests by adding the requesting accounts to the merkle tree when executing 'processSignUpRequestAction'`, async () => {
+  test(`process 2 sign-up requests when executing 'processSignUpRequestAction'`, async () => {
     await localDeploy();
 
     const txn1 = await Mina.transaction(user1PrivateKey, () => {
@@ -310,6 +310,88 @@ describe('AccountManagement', () => {
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
     expect(zkApp.actionTurn.get()).toEqual(Field(2));
+  });
+
+  test(`process the only sign-up request when executing 'processSignUpRequestAction',
+        then emit a new one, set the range, and process it`, async () => {
+    await localDeploy();
+
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
+    });
+    await txn1.prove();
+    await txn1.sign([user1PrivateKey]).send();
+
+    const txn2 = await Mina.transaction(deployerAccount, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn2.prove();
+    await txn2.send();
+
+    const user1AsAccount = new Account({
+      publicKey: user1PrivateKey.toPublicKey(),
+      accountNumber: Field(0),
+      balance: initialBalance,
+      actionOrigin: UInt32.from(1),
+    });
+
+    let expectedTree = new MerkleTree(21);
+    expectedTree.setLeaf(0n, user1AsAccount.hash());
+    const expectedTreeRoot1 = expectedTree.getRoot();
+
+    const startOfActionsRange1 = zkApp.startOfActionsRange.get();
+    const endOfActionsRange1 = zkApp.endOfActionsRange.get();
+
+    const actions2D1 = zkApp.reducer.getActions({
+      fromActionHash: startOfActionsRange1,
+      endActionHash: endOfActionsRange1,
+    });
+    const actions1 = actions2D1.flat();
+
+    let tree = new MerkleTree(21);
+
+    await processActions(actions1, tree);
+
+    expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot1);
+    expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
+    expect(zkApp.actionTurn.get()).toEqual(Field(1));
+
+    const txn3 = await Mina.transaction(user2PrivateKey, () => {
+      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
+    });
+    await txn3.prove();
+    await txn3.sign([user2PrivateKey]).send();
+
+    const txn4 = await Mina.transaction(deployerAccount, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn4.prove();
+    await txn4.send();
+
+    const user2AsAccount = new Account({
+      publicKey: user2PrivateKey.toPublicKey(),
+      accountNumber: Field(1),
+      balance: initialBalance,
+      actionOrigin: UInt32.from(1),
+    });
+
+    expectedTree.setLeaf(1n, user2AsAccount.hash());
+    const expectedTreeRoot2 = expectedTree.getRoot();
+
+    const startOfActionsRange2 = zkApp.startOfActionsRange.get();
+    const endOfActionsRange2 = zkApp.endOfActionsRange.get();
+
+    const actions2D2 = zkApp.reducer.getActions({
+      fromActionHash: startOfActionsRange2,
+      endActionHash: endOfActionsRange2,
+    });
+    const actions2 = actions2D2.flat();
+
+    await processActions(actions2, tree);
+
+    expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot2);
+    expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
+    expect(zkApp.actionTurn.get()).toEqual(Field(1));
   });
 
   test(`executing 'processSignUpRequestAction' by feeding it a witness from an account set in the merkle tree with an index
