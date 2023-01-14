@@ -422,6 +422,74 @@ describe('AccountManagement', () => {
     }).rejects.toThrowError('assert_equal: 1 != 0');
   });
 
+  test(`Trying to process an action not emitted by requestSignUp, with processSignUpRequestAction
+        throws the expected error`, async () => {
+    await localDeploy();
+
+    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
+    });
+    await txn1.prove();
+    await txn1.sign([user1PrivateKey]).send();
+
+    const txn2 = await Mina.transaction(deployerAccount, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn2.prove();
+    await txn2.send();
+
+    let startOfActionsRange = zkApp.startOfActionsRange.get();
+    let endOfActionsRange = zkApp.endOfActionsRange.get();
+
+    let actions2D = zkApp.reducer.getActions({
+      fromActionHash: startOfActionsRange,
+      endActionHash: endOfActionsRange,
+    });
+    let actions = actions2D.flat();
+
+    let tree = new MerkleTree(21);
+
+    await processActions(actions, tree);
+
+    const newUserPrivateKey = PrivateKey.random();
+    const newUserPublicKey = newUserPrivateKey.toPublicKey();
+
+    const txn3 = await Mina.transaction(deployerAccount, () => {
+      AccountUpdate.fundNewAccount(deployerAccount);
+      zkApp.releaseFunds(
+        user1PrivateKey.toPublicKey(),
+        newUserPublicKey,
+        UInt64.from(1_000_000_000)
+      );
+    });
+    await txn3.prove();
+    await txn3.sign([user1PrivateKey]).send();
+
+    const txn4 = await Mina.transaction(deployerAccount, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn4.prove();
+    await txn4.send();
+
+    startOfActionsRange = zkApp.startOfActionsRange.get();
+    endOfActionsRange = zkApp.endOfActionsRange.get();
+
+    actions2D = zkApp.reducer.getActions({
+      fromActionHash: startOfActionsRange,
+      endActionHash: endOfActionsRange,
+    });
+    actions = actions2D.flat();
+
+    let typedAction = new Account(actions[0]);
+    tree.setLeaf(actions[0].accountNumber.toBigInt(), typedAction.hash());
+    let aw = tree.getWitness(actions[0].accountNumber.toBigInt());
+    let accountWitness = new AccountWitness(aw);
+
+    expect(async () => {
+      zkApp.processSignUpRequestAction(accountWitness);
+    }).rejects.toThrowError('assert_equal: 2 != 1');
+  });
+
   test(`when 'releaseFunds' is executed, it sends the right amount to the right address, and the balance from
         the sender gets updated accordingly`, async () => {
     await localDeploy();

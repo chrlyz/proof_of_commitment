@@ -25,6 +25,9 @@ import {
 
 await isReady;
 
+const signUpMethodID = UInt32.from(1);
+const releaseFundsMethodID = UInt32.from(2);
+
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });
 
@@ -157,6 +160,7 @@ export class AccountManagement extends SmartContract {
   @method processSignUpRequestAction(accountWitness: AccountWitness) {
     const actionWithMetadata = this.getCurrentAction();
     const action = actionWithMetadata.action;
+    action.actionOrigin.assertEquals(signUpMethodID);
 
     /* Validate that the account was registered using the account number
      * as the index for the merkle tree.
@@ -191,7 +195,7 @@ export class AccountManagement extends SmartContract {
       publicKey: from,
       accountNumber: Field(0),
       balance: amount,
-      actionOrigin: UInt32.from(2),
+      actionOrigin: UInt32.from(releaseFundsMethodID),
     });
 
     this.reducer.dispatch(action);
