@@ -19,7 +19,7 @@ import {
   initialBalance,
 } from './Account.js';
 
-import { AccountManagement } from './AccountManagement.js';
+import { AccountManagement, signUpMethodID } from './AccountManagement.js';
 
 let proofsEnabled = false;
 
@@ -29,7 +29,9 @@ describe('AccountManagement', () => {
     zkappKey: PrivateKey,
     zkApp: AccountManagement,
     user1PrivateKey: PrivateKey,
-    user2PrivateKey: PrivateKey;
+    user2PrivateKey: PrivateKey,
+    user1AsAccount: Account,
+    user2AsAccount: Account;
 
   beforeAll(async () => {
     await isReady;
@@ -45,6 +47,18 @@ describe('AccountManagement', () => {
     zkApp = new AccountManagement(zkAppAddress);
     user1PrivateKey = Local.testAccounts[1].privateKey;
     user2PrivateKey = Local.testAccounts[2].privateKey;
+    user1AsAccount = new Account({
+      publicKey: user1PrivateKey.toPublicKey(),
+      accountNumber: Field(1),
+      balance: initialBalance,
+      actionOrigin: UInt32.from(0),
+    });
+    user2AsAccount = new Account({
+      publicKey: user2PrivateKey.toPublicKey(),
+      accountNumber: Field(2),
+      balance: initialBalance,
+      actionOrigin: UInt32.from(0),
+    });
   });
 
   afterAll(() => {
@@ -271,18 +285,8 @@ describe('AccountManagement', () => {
     await txn3.prove();
     await txn3.send();
 
-    const user1AsAccount = new Account({
-      publicKey: user1PrivateKey.toPublicKey(),
-      accountNumber: Field(1),
-      balance: initialBalance,
-      actionOrigin: UInt32.from(1),
-    });
-    const user2AsAccount = new Account({
-      publicKey: user2PrivateKey.toPublicKey(),
-      accountNumber: Field(2),
-      balance: initialBalance,
-      actionOrigin: UInt32.from(1),
-    });
+    user1AsAccount.actionOrigin = signUpMethodID;
+    user2AsAccount.actionOrigin = signUpMethodID;
 
     let expectedTree = new MerkleTree(21);
     expectedTree.setLeaf(1n, user1AsAccount.hash());
@@ -323,12 +327,7 @@ describe('AccountManagement', () => {
     await txn2.prove();
     await txn2.send();
 
-    const user1AsAccount = new Account({
-      publicKey: user1PrivateKey.toPublicKey(),
-      accountNumber: Field(1),
-      balance: initialBalance,
-      actionOrigin: UInt32.from(1),
-    });
+    user1AsAccount.actionOrigin = signUpMethodID;
 
     let expectedTree = new MerkleTree(21);
     expectedTree.setLeaf(1n, user1AsAccount.hash());
@@ -404,13 +403,6 @@ describe('AccountManagement', () => {
     });
     await txn2.prove();
     await txn2.send();
-
-    const user1AsAccount = new Account({
-      publicKey: user1PrivateKey.toPublicKey(),
-      accountNumber: Field(1),
-      balance: initialBalance,
-      actionOrigin: UInt32.from(0),
-    });
 
     let tree = new MerkleTree(21);
     tree.setLeaf(2n, user1AsAccount.hash());

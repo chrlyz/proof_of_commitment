@@ -25,8 +25,8 @@ import {
 
 await isReady;
 
-const signUpMethodID = UInt32.from(1);
-const releaseFundsMethodID = UInt32.from(2);
+export const signUpMethodID = UInt32.from(1);
+export const releaseFundsMethodID = UInt32.from(2);
 
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });
