@@ -21,7 +21,7 @@ import {
 
 import { AccountManagement, signUpMethodID } from './AccountManagement.js';
 
-let proofsEnabled = false;
+let proofsEnabled = true;
 
 describe('AccountManagement', () => {
   let deployerAccount: PrivateKey,
@@ -134,6 +134,33 @@ describe('AccountManagement', () => {
     });
     await txn.prove();
     await txn.send();
+  }
+
+  async function doReleaseFundsTxn(
+    releaser: PrivateKey,
+    receiver: PublicKey,
+    amount: number
+  ) {
+    const txn = await Mina.transaction(releaser, () => {
+      zkApp.releaseFunds(releaser.toPublicKey(), receiver, UInt64.from(amount));
+    });
+    await txn.prove();
+    await txn.sign([releaser]).send();
+  }
+
+  async function createNewMinaAccount(sponsor: PrivateKey, amount: number) {
+    const newUserPrivateKey = PrivateKey.random();
+
+    const txn = await Mina.transaction(sponsor, () => {
+      AccountUpdate.fundNewAccount(sponsor);
+      AccountUpdate.create(sponsor.toPublicKey()).send({
+        to: newUserPrivateKey.toPublicKey(),
+        amount,
+      });
+    });
+    await txn.prove();
+    await txn.sign([sponsor]).send();
+    return newUserPrivateKey;
   }
 
   it('successfully deploys the `AccountManagement` smart contract', async () => {
@@ -328,26 +355,19 @@ describe('AccountManagement', () => {
   test(`Trying to process an action not emitted by requestSignUp, with processSignUpRequestAction
         throws the expected error`, async () => {
     await localDeploy();
-
     await doSignUpTxn(user1PrivateKey);
-    await doSetActionsRangeTxn();
 
+    await doSetActionsRangeTxn();
     const range1 = getActionsRange();
+
     await processSignUpActions(range1.actions, tree);
 
-    const newUserPrivateKey = PrivateKey.random();
-    const newUserPublicKey = newUserPrivateKey.toPublicKey();
-
-    const txn = await Mina.transaction(deployerAccount, () => {
-      AccountUpdate.fundNewAccount(deployerAccount);
-      zkApp.releaseFunds(
-        user1PrivateKey.toPublicKey(),
-        newUserPublicKey,
-        UInt64.from(1_000_000_000)
-      );
-    });
-    await txn.prove();
-    await txn.sign([user1PrivateKey]).send();
+    const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
+    await doReleaseFundsTxn(
+      user1PrivateKey,
+      newUserPrivateKey.toPublicKey(),
+      1_000_000_000
+    );
 
     await doSetActionsRangeTxn();
     const range2 = getActionsRange();
@@ -382,35 +402,17 @@ describe('AccountManagement', () => {
       UInt64.from(initialBalance).mul(2)
     );
 
-    const newUserPrivateKey = PrivateKey.random();
+    const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
-    const txn1 = await Mina.transaction(deployerAccount, () => {
-      AccountUpdate.fundNewAccount(deployerAccount);
-      zkApp.releaseFunds(
-        user1PrivateKey.toPublicKey(),
-        newUserPublicKey,
-        UInt64.from(1_000_000_000)
-      );
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
-
-    const txn2 = await Mina.transaction(deployerAccount, () => {
-      zkApp.releaseFunds(
-        user2PrivateKey.toPublicKey(),
-        newUserPublicKey,
-        UInt64.from(2_500_000_000)
-      );
-    });
-    await txn2.prove();
-    await txn2.sign([user2PrivateKey]).send();
+    await doReleaseFundsTxn(user1PrivateKey, newUserPublicKey, 1_000_000_000);
+    await doReleaseFundsTxn(user2PrivateKey, newUserPublicKey, 2_500_000_000);
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(
       UInt64.from(initialBalance).mul(2).sub(3_500_000_000)
     );
     expect(Mina.getBalance(newUserPublicKey)).toEqual(
-      UInt64.from(3_500_000_000)
+      UInt64.from(3_500_000_001)
     );
   });
 
@@ -421,21 +423,13 @@ describe('AccountManagement', () => {
 
     await doSignUpTxn(user1PrivateKey);
 
-    const newUserPrivateKey = PrivateKey.random();
+    const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
-    const txn2 = await Mina.transaction(deployerAccount, () => {
-      AccountUpdate.fundNewAccount(deployerAccount);
-      AccountUpdate.create(deployerAccount.toPublicKey()).send({
-        to: newUserPublicKey,
-        amount: UInt64.from(1),
-      });
-    });
-    await txn2.prove();
-    await txn2.send();
-
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(initialBalance));
-    expect(Mina.getBalance(newUserPublicKey)).toEqual(UInt64.from(1));
+    expect(Mina.getBalance(newUserPrivateKey.toPublicKey())).toEqual(
+      UInt64.from(1)
+    );
 
     /* Using zkApp.send fails silently without doing nothing, so we don't
      * expect any errors to be thrown by this, we just check later that it
