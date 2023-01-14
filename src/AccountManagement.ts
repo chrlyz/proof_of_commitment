@@ -46,7 +46,7 @@ export class AccountManagement extends SmartContract {
       send: Permissions.proof(),
     });
     this.startOfAllActions.set(Reducer.initialActionsHash);
-    this.accountNumber.set(Field(0));
+    this.accountNumber.set(Field(1));
     this.numberOfPendingActions.set(Field(0));
     this.actionTurn.set(Field(0));
     this.startOfActionsRange.set(Reducer.initialActionsHash);

@@ -89,7 +89,7 @@ describe('AccountManagement', () => {
     const accountsRoot = zkApp.accountsRoot.get();
 
     expect(startOfAllActions).toEqual(Reducer.initialActionsHash);
-    expect(accountNumber).toEqual(Field(0));
+    expect(accountNumber).toEqual(Field(1));
     expect(numberOfPendingActions).toEqual(Field(0));
     expect(actionTurn).toEqual(Field(0));
     expect(startOfActionsRange).toEqual(Reducer.initialActionsHash);
@@ -113,7 +113,7 @@ describe('AccountManagement', () => {
 
     expect(actions.length).toEqual(1);
     expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
-    expect(actions[0].accountNumber).toEqual(Field(0));
+    expect(actions[0].accountNumber).toEqual(Field(1));
     expect(actions[0].balance).toEqual(initialBalance);
     expect(actions[0].actionOrigin).toEqual(UInt32.from(1));
   });
@@ -140,11 +140,11 @@ describe('AccountManagement', () => {
 
     expect(actions.length).toEqual(2);
     expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
-    expect(actions[0].accountNumber).toEqual(Field(0));
+    expect(actions[0].accountNumber).toEqual(Field(1));
     expect(actions[0].balance).toEqual(initialBalance);
     expect(actions[0].actionOrigin).toEqual(UInt32.from(1));
     expect(actions[1].publicKey).toEqual(user2PrivateKey.toPublicKey());
-    expect(actions[1].accountNumber).toEqual(Field(1));
+    expect(actions[1].accountNumber).toEqual(Field(2));
     expect(actions[1].balance).toEqual(initialBalance);
     expect(actions[1].actionOrigin).toEqual(UInt32.from(1));
   });
@@ -273,20 +273,20 @@ describe('AccountManagement', () => {
 
     const user1AsAccount = new Account({
       publicKey: user1PrivateKey.toPublicKey(),
-      accountNumber: Field(0),
+      accountNumber: Field(1),
       balance: initialBalance,
       actionOrigin: UInt32.from(1),
     });
     const user2AsAccount = new Account({
       publicKey: user2PrivateKey.toPublicKey(),
-      accountNumber: Field(1),
+      accountNumber: Field(2),
       balance: initialBalance,
       actionOrigin: UInt32.from(1),
     });
 
     let expectedTree = new MerkleTree(21);
-    expectedTree.setLeaf(0n, user1AsAccount.hash());
-    expectedTree.setLeaf(1n, user2AsAccount.hash());
+    expectedTree.setLeaf(1n, user1AsAccount.hash());
+    expectedTree.setLeaf(2n, user2AsAccount.hash());
     const expectedTreeRoot = expectedTree.getRoot();
 
     const startOfActionsRange = zkApp.startOfActionsRange.get();
@@ -325,13 +325,13 @@ describe('AccountManagement', () => {
 
     const user1AsAccount = new Account({
       publicKey: user1PrivateKey.toPublicKey(),
-      accountNumber: Field(0),
+      accountNumber: Field(1),
       balance: initialBalance,
       actionOrigin: UInt32.from(1),
     });
 
     let expectedTree = new MerkleTree(21);
-    expectedTree.setLeaf(0n, user1AsAccount.hash());
+    expectedTree.setLeaf(1n, user1AsAccount.hash());
     const expectedTreeRoot1 = expectedTree.getRoot();
 
     const startOfActionsRange1 = zkApp.startOfActionsRange.get();
@@ -365,12 +365,12 @@ describe('AccountManagement', () => {
 
     const user2AsAccount = new Account({
       publicKey: user2PrivateKey.toPublicKey(),
-      accountNumber: Field(1),
+      accountNumber: Field(2),
       balance: initialBalance,
       actionOrigin: UInt32.from(1),
     });
 
-    expectedTree.setLeaf(1n, user2AsAccount.hash());
+    expectedTree.setLeaf(2n, user2AsAccount.hash());
     const expectedTreeRoot2 = expectedTree.getRoot();
 
     const startOfActionsRange2 = zkApp.startOfActionsRange.get();
@@ -407,19 +407,19 @@ describe('AccountManagement', () => {
 
     const user1AsAccount = new Account({
       publicKey: user1PrivateKey.toPublicKey(),
-      accountNumber: Field(0),
+      accountNumber: Field(1),
       balance: initialBalance,
       actionOrigin: UInt32.from(0),
     });
 
     let tree = new MerkleTree(21);
-    tree.setLeaf(1n, user1AsAccount.hash());
-    let aw = tree.getWitness(1n);
+    tree.setLeaf(2n, user1AsAccount.hash());
+    let aw = tree.getWitness(2n);
     let accountWitness = new AccountWitness(aw);
 
     expect(async () => {
       zkApp.processSignUpRequestAction(accountWitness);
-    }).rejects.toThrowError('assert_equal: 1 != 0');
+    }).rejects.toThrowError('assert_equal: 2 != 1');
   });
 
   test(`Trying to process an action not emitted by requestSignUp, with processSignUpRequestAction
