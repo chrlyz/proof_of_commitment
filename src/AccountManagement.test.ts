@@ -96,6 +96,28 @@ describe('AccountManagement', () => {
     }
   }
 
+  function getActionsRange() {
+    const startOfActionsRange = zkApp.startOfActionsRange.get();
+    const endOfActionsRange = zkApp.endOfActionsRange.get();
+    const actions2D = zkApp.reducer.getActions({
+      fromActionHash: startOfActionsRange,
+      endActionHash: endOfActionsRange,
+    });
+    const actions = actions2D.flat();
+    return {
+      actions: actions,
+      startOfActionsRange: startOfActionsRange,
+      endOfActionsRange: endOfActionsRange,
+    };
+  }
+
+  function getAllActions() {
+    const actions2D = zkApp.reducer.getActions({
+      fromActionHash: zkApp.startOfAllActions.get(),
+    });
+    return actions2D.flat();
+  }
+
   it('successfully deploys the `AccountManagement` smart contract', async () => {
     await localDeploy();
     const startOfAllActions = zkApp.startOfAllActions.get();
@@ -124,10 +146,7 @@ describe('AccountManagement', () => {
     await txn1.prove();
     await txn1.sign([user1PrivateKey]).send();
 
-    const actions2D = zkApp.reducer.getActions({
-      fromActionHash: zkApp.startOfAllActions.get(),
-    });
-    const actions = actions2D.flat();
+    const actions = getAllActions();
 
     expect(actions.length).toEqual(1);
     expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
@@ -151,10 +170,7 @@ describe('AccountManagement', () => {
     await txn2.prove();
     await txn2.sign([user2PrivateKey]).send();
 
-    const actions2D = zkApp.reducer.getActions({
-      fromActionHash: zkApp.startOfAllActions.get(),
-    });
-    const actions = actions2D.flat();
+    const actions = getAllActions();
 
     expect(actions.length).toEqual(2);
     expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
@@ -253,19 +269,13 @@ describe('AccountManagement', () => {
 
     const expectedNumberOfPendingActions = 2;
     const numberOfPendingActions = zkApp.numberOfPendingActions.get();
-    const startOfActionsRange = zkApp.startOfActionsRange.get();
-    const endOfActionsRange = zkApp.endOfActionsRange.get();
 
-    const actions2D = zkApp.reducer.getActions({
-      fromActionHash: startOfActionsRange,
-      endActionHash: endOfActionsRange,
-    });
-    const actions = actions2D.flat();
+    const range = getActionsRange();
 
     expect(numberOfPendingActions).toEqual(
       Field(expectedNumberOfPendingActions)
     );
-    expect(actions.length).toEqual(expectedNumberOfPendingActions);
+    expect(range.actions.length).toEqual(expectedNumberOfPendingActions);
   });
 
   test(`process 2 sign-up requests when executing 'processSignUpRequestAction'`, async () => {
@@ -297,18 +307,11 @@ describe('AccountManagement', () => {
     expectedTree.setLeaf(2n, user2AsAccount.hash());
     const expectedTreeRoot = expectedTree.getRoot();
 
-    const startOfActionsRange = zkApp.startOfActionsRange.get();
-    const endOfActionsRange = zkApp.endOfActionsRange.get();
-
-    const actions2D = zkApp.reducer.getActions({
-      fromActionHash: startOfActionsRange,
-      endActionHash: endOfActionsRange,
-    });
-    const actions = actions2D.flat();
+    const range = getActionsRange();
 
     let tree = new MerkleTree(21);
 
-    await processSignUpActions(actions, tree);
+    await processSignUpActions(range.actions, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -337,18 +340,11 @@ describe('AccountManagement', () => {
     expectedTree.setLeaf(1n, user1AsAccount.hash());
     const expectedTreeRoot1 = expectedTree.getRoot();
 
-    const startOfActionsRange1 = zkApp.startOfActionsRange.get();
-    const endOfActionsRange1 = zkApp.endOfActionsRange.get();
-
-    const actions2D1 = zkApp.reducer.getActions({
-      fromActionHash: startOfActionsRange1,
-      endActionHash: endOfActionsRange1,
-    });
-    const actions1 = actions2D1.flat();
+    const range1 = getActionsRange();
 
     let tree = new MerkleTree(21);
 
-    await processSignUpActions(actions1, tree);
+    await processSignUpActions(range1.actions, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot1);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -366,26 +362,14 @@ describe('AccountManagement', () => {
     await txn4.prove();
     await txn4.send();
 
-    const user2AsAccount = new Account({
-      publicKey: user2PrivateKey.toPublicKey(),
-      accountNumber: Field(2),
-      balance: initialBalance,
-      actionOrigin: UInt32.from(1),
-    });
+    user2AsAccount.actionOrigin = signUpMethodID;
 
     expectedTree.setLeaf(2n, user2AsAccount.hash());
     const expectedTreeRoot2 = expectedTree.getRoot();
 
-    const startOfActionsRange2 = zkApp.startOfActionsRange.get();
-    const endOfActionsRange2 = zkApp.endOfActionsRange.get();
+    const range2 = getActionsRange();
 
-    const actions2D2 = zkApp.reducer.getActions({
-      fromActionHash: startOfActionsRange2,
-      endActionHash: endOfActionsRange2,
-    });
-    const actions2 = actions2D2.flat();
-
-    await processSignUpActions(actions2, tree);
+    await processSignUpActions(range2.actions, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot2);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -434,18 +418,11 @@ describe('AccountManagement', () => {
     await txn2.prove();
     await txn2.send();
 
-    let startOfActionsRange = zkApp.startOfActionsRange.get();
-    let endOfActionsRange = zkApp.endOfActionsRange.get();
-
-    let actions2D = zkApp.reducer.getActions({
-      fromActionHash: startOfActionsRange,
-      endActionHash: endOfActionsRange,
-    });
-    let actions = actions2D.flat();
+    const range1 = getActionsRange();
 
     let tree = new MerkleTree(21);
 
-    await processSignUpActions(actions, tree);
+    await processSignUpActions(range1.actions, tree);
 
     const newUserPrivateKey = PrivateKey.random();
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
@@ -467,18 +444,14 @@ describe('AccountManagement', () => {
     await txn4.prove();
     await txn4.send();
 
-    startOfActionsRange = zkApp.startOfActionsRange.get();
-    endOfActionsRange = zkApp.endOfActionsRange.get();
+    const range2 = getActionsRange();
 
-    actions2D = zkApp.reducer.getActions({
-      fromActionHash: startOfActionsRange,
-      endActionHash: endOfActionsRange,
-    });
-    actions = actions2D.flat();
-
-    let typedAction = new Account(actions[0]);
-    tree.setLeaf(actions[0].accountNumber.toBigInt(), typedAction.hash());
-    let aw = tree.getWitness(actions[0].accountNumber.toBigInt());
+    let typedAction = new Account(range2.actions[0]);
+    tree.setLeaf(
+      range2.actions[0].accountNumber.toBigInt(),
+      typedAction.hash()
+    );
+    let aw = tree.getWitness(range2.actions[0].accountNumber.toBigInt());
     let accountWitness = new AccountWitness(aw);
 
     expect(async () => {
@@ -510,18 +483,11 @@ describe('AccountManagement', () => {
     await txn3.prove();
     await txn3.send();
 
-    const startOfActionsRange = zkApp.startOfActionsRange.get();
-    const endOfActionsRange = zkApp.endOfActionsRange.get();
-
-    const actions2D = zkApp.reducer.getActions({
-      fromActionHash: startOfActionsRange,
-      endActionHash: endOfActionsRange,
-    });
-    const actions = actions2D.flat();
+    const range = getActionsRange();
 
     let tree = new MerkleTree(21);
 
-    await processSignUpActions(actions, tree);
+    await processSignUpActions(range.actions, tree);
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(
       UInt64.from(initialBalance).mul(2)
