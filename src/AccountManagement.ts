@@ -12,12 +12,16 @@ import {
   Bool,
   AccountUpdate,
   Circuit,
-  provable,
   UInt64,
   UInt32,
 } from 'snarkyjs';
 
-import { Account, AccountWitness, initialBalance } from './Account.js';
+import {
+  Account,
+  stateType,
+  AccountWitness,
+  initialBalance,
+} from './Account.js';
 
 await isReady;
 
@@ -168,8 +172,6 @@ export class AccountManagement extends SmartContract {
       endActionHash: endOfActionsRange,
     });
 
-    const stateType = provable(Account);
-
     let index = Field(0);
     const { state: action } = this.reducer.reduce(
       actions,
@@ -207,20 +209,15 @@ export class AccountManagement extends SmartContract {
       }
     );
 
-    /* Use the values of the recovered action to intantiate the action
-     * with its proper Account type, so its methods become available.
-     */
-    let typedAction = new Account({
-      publicKey: action.publicKey,
-      accountNumber: action.accountNumber,
-      balance: action.balance,
-      actionOrigin: action.actionOrigin,
-    });
-
     /* Validate that the account was registered using the account number
      * as the index for the merkle tree.
      */
-    accountWitness.calculateIndex().assertEquals(typedAction.accountNumber);
+    accountWitness.calculateIndex().assertEquals(action.accountNumber);
+
+    /* Convert action into its proper Account type, so its methods
+     * become available.
+     */
+    let typedAction = new Account(action);
 
     /* Finally update the merkle tree root, so it includes the new registered
      * account. Advance to the turn of the next action to be processed, and

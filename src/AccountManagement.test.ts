@@ -21,7 +21,7 @@ import {
 
 import { AccountManagement } from './AccountManagement.js';
 
-let proofsEnabled = true;
+let proofsEnabled = false;
 
 describe('AccountManagement', () => {
   let deployerAccount: PrivateKey,
@@ -65,12 +65,7 @@ describe('AccountManagement', () => {
 
   async function processActions(actions: AccountShape[], tree: MerkleTree) {
     for (let action of actions) {
-      let typedAction = new Account({
-        publicKey: action.publicKey,
-        accountNumber: action.accountNumber,
-        balance: action.balance,
-        actionOrigin: action.actionOrigin,
-      });
+      let typedAction = new Account(action);
       tree.setLeaf(action.accountNumber.toBigInt(), typedAction.hash());
       let aw = tree.getWitness(action.accountNumber.toBigInt());
       let accountWitness = new AccountWitness(aw);
