@@ -77,8 +77,12 @@ describe('AccountManagement', () => {
     await txn.send();
   }
 
-  async function processActions(actions: AccountShape[], tree: MerkleTree) {
+  async function processSignUpActions(
+    actions: AccountShape[],
+    tree: MerkleTree
+  ) {
     for (let action of actions) {
+      action.actionOrigin.assertEquals(signUpMethodID);
       let typedAction = new Account(action);
       tree.setLeaf(action.accountNumber.toBigInt(), typedAction.hash());
       let aw = tree.getWitness(action.accountNumber.toBigInt());
@@ -304,7 +308,7 @@ describe('AccountManagement', () => {
 
     let tree = new MerkleTree(21);
 
-    await processActions(actions, tree);
+    await processSignUpActions(actions, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -344,7 +348,7 @@ describe('AccountManagement', () => {
 
     let tree = new MerkleTree(21);
 
-    await processActions(actions1, tree);
+    await processSignUpActions(actions1, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot1);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -381,7 +385,7 @@ describe('AccountManagement', () => {
     });
     const actions2 = actions2D2.flat();
 
-    await processActions(actions2, tree);
+    await processSignUpActions(actions2, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot2);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -441,7 +445,7 @@ describe('AccountManagement', () => {
 
     let tree = new MerkleTree(21);
 
-    await processActions(actions, tree);
+    await processSignUpActions(actions, tree);
 
     const newUserPrivateKey = PrivateKey.random();
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
@@ -517,7 +521,7 @@ describe('AccountManagement', () => {
 
     let tree = new MerkleTree(21);
 
-    await processActions(actions, tree);
+    await processSignUpActions(actions, tree);
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(
       UInt64.from(initialBalance).mul(2)
