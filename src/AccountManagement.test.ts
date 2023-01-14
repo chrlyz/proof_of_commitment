@@ -31,7 +31,8 @@ describe('AccountManagement', () => {
     user1PrivateKey: PrivateKey,
     user2PrivateKey: PrivateKey,
     user1AsAccount: Account,
-    user2AsAccount: Account;
+    user2AsAccount: Account,
+    tree: MerkleTree;
 
   beforeAll(async () => {
     await isReady;
@@ -59,6 +60,7 @@ describe('AccountManagement', () => {
       balance: initialBalance,
       actionOrigin: UInt32.from(0),
     });
+    tree = new MerkleTree(21);
   });
 
   afterAll(() => {
@@ -264,9 +266,6 @@ describe('AccountManagement', () => {
     const expectedTreeRoot = expectedTree.getRoot();
 
     const range = getActionsRange();
-
-    let tree = new MerkleTree(21);
-
     await processSignUpActions(range.actions, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot);
@@ -288,9 +287,6 @@ describe('AccountManagement', () => {
     const expectedTreeRoot1 = expectedTree.getRoot();
 
     const range1 = getActionsRange();
-
-    let tree = new MerkleTree(21);
-
     await processSignUpActions(range1.actions, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot1);
@@ -320,7 +316,6 @@ describe('AccountManagement', () => {
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
 
-    let tree = new MerkleTree(21);
     tree.setLeaf(2n, user1AsAccount.hash());
     let aw = tree.getWitness(2n);
     let accountWitness = new AccountWitness(aw);
@@ -338,9 +333,6 @@ describe('AccountManagement', () => {
     await doSetActionsRangeTxn();
 
     const range1 = getActionsRange();
-
-    let tree = new MerkleTree(21);
-
     await processSignUpActions(range1.actions, tree);
 
     const newUserPrivateKey = PrivateKey.random();
@@ -384,9 +376,6 @@ describe('AccountManagement', () => {
     await doSetActionsRangeTxn();
 
     const range = getActionsRange();
-
-    let tree = new MerkleTree(21);
-
     await processSignUpActions(range.actions, tree);
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(
