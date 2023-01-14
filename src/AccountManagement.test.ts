@@ -126,6 +126,14 @@ describe('AccountManagement', () => {
     await txn.sign([userPrivateKey]).send();
   }
 
+  async function doSetActionsRangeTxn() {
+    const txn = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.setRangeOfActionsToBeProcessed();
+    });
+    await txn.prove();
+    await txn.send();
+  }
+
   it('successfully deploys the `AccountManagement` smart contract', async () => {
     await localDeploy();
 
@@ -226,19 +234,12 @@ describe('AccountManagement', () => {
   test(`number of pending actions and the action hash for the end of the range get updated properly when
         'setRangeOfActionsToBeProcessed' is executed when 2 actions have been emitted`, async () => {
     await localDeploy();
-
     await doSignUpTxn(user1PrivateKey);
     await doSignUpTxn(user2PrivateKey);
-
-    const txn = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn.prove();
-    await txn.send();
+    await doSetActionsRangeTxn();
 
     const expectedNumberOfPendingActions = 2;
     const numberOfPendingActions = zkApp.numberOfPendingActions.get();
-
     const range = getActionsRange();
 
     expect(numberOfPendingActions).toEqual(
@@ -252,12 +253,7 @@ describe('AccountManagement', () => {
 
     await doSignUpTxn(user1PrivateKey);
     await doSignUpTxn(user2PrivateKey);
-
-    const txn3 = await Mina.transaction(deployerAccount, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn3.prove();
-    await txn3.send();
+    await doSetActionsRangeTxn();
 
     user1AsAccount.actionOrigin = signUpMethodID;
     user2AsAccount.actionOrigin = signUpMethodID;
@@ -283,12 +279,7 @@ describe('AccountManagement', () => {
     await localDeploy();
 
     await doSignUpTxn(user1PrivateKey);
-
-    const txn = await Mina.transaction(deployerAccount, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn.prove();
-    await txn.send();
+    await doSetActionsRangeTxn();
 
     user1AsAccount.actionOrigin = signUpMethodID;
 
@@ -307,12 +298,7 @@ describe('AccountManagement', () => {
     expect(zkApp.actionTurn.get()).toEqual(Field(1));
 
     await doSignUpTxn(user2PrivateKey);
-
-    const txn4 = await Mina.transaction(deployerAccount, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn4.prove();
-    await txn4.send();
+    await doSetActionsRangeTxn();
 
     user2AsAccount.actionOrigin = signUpMethodID;
 
@@ -331,14 +317,8 @@ describe('AccountManagement', () => {
   test(`executing 'processSignUpRequestAction' by feeding it a witness from an account set in the merkle tree with an index
         not corresponding to the account number should throw an error`, async () => {
     await localDeploy();
-
     await doSignUpTxn(user1PrivateKey);
-
-    const txn2 = await Mina.transaction(deployerAccount, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn2.prove();
-    await txn2.send();
+    await doSetActionsRangeTxn();
 
     let tree = new MerkleTree(21);
     tree.setLeaf(2n, user1AsAccount.hash());
@@ -355,12 +335,7 @@ describe('AccountManagement', () => {
     await localDeploy();
 
     await doSignUpTxn(user1PrivateKey);
-
-    const txn2 = await Mina.transaction(deployerAccount, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn2.prove();
-    await txn2.send();
+    await doSetActionsRangeTxn();
 
     const range1 = getActionsRange();
 
@@ -371,7 +346,7 @@ describe('AccountManagement', () => {
     const newUserPrivateKey = PrivateKey.random();
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
-    const txn3 = await Mina.transaction(deployerAccount, () => {
+    const txn = await Mina.transaction(deployerAccount, () => {
       AccountUpdate.fundNewAccount(deployerAccount);
       zkApp.releaseFunds(
         user1PrivateKey.toPublicKey(),
@@ -379,15 +354,10 @@ describe('AccountManagement', () => {
         UInt64.from(1_000_000_000)
       );
     });
-    await txn3.prove();
-    await txn3.sign([user1PrivateKey]).send();
+    await txn.prove();
+    await txn.sign([user1PrivateKey]).send();
 
-    const txn4 = await Mina.transaction(deployerAccount, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn4.prove();
-    await txn4.send();
-
+    await doSetActionsRangeTxn();
     const range2 = getActionsRange();
 
     let typedAction = new Account(range2.actions[0]);
@@ -411,12 +381,7 @@ describe('AccountManagement', () => {
 
     await doSignUpTxn(user1PrivateKey);
     await doSignUpTxn(user2PrivateKey);
-
-    const txn3 = await Mina.transaction(deployerAccount, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn3.prove();
-    await txn3.send();
+    await doSetActionsRangeTxn();
 
     const range = getActionsRange();
 
@@ -431,7 +396,7 @@ describe('AccountManagement', () => {
     const newUserPrivateKey = PrivateKey.random();
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
-    const txn4 = await Mina.transaction(deployerAccount, () => {
+    const txn1 = await Mina.transaction(deployerAccount, () => {
       AccountUpdate.fundNewAccount(deployerAccount);
       zkApp.releaseFunds(
         user1PrivateKey.toPublicKey(),
@@ -439,18 +404,18 @@ describe('AccountManagement', () => {
         UInt64.from(1_000_000_000)
       );
     });
-    await txn4.prove();
-    await txn4.sign([user1PrivateKey]).send();
+    await txn1.prove();
+    await txn1.sign([user1PrivateKey]).send();
 
-    const txn5 = await Mina.transaction(deployerAccount, () => {
+    const txn2 = await Mina.transaction(deployerAccount, () => {
       zkApp.releaseFunds(
         user2PrivateKey.toPublicKey(),
         newUserPublicKey,
         UInt64.from(2_500_000_000)
       );
     });
-    await txn5.prove();
-    await txn5.sign([user2PrivateKey]).send();
+    await txn2.prove();
+    await txn2.sign([user2PrivateKey]).send();
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(
       UInt64.from(initialBalance).mul(2).sub(3_500_000_000)
