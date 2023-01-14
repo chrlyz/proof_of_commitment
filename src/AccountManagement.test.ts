@@ -118,8 +118,17 @@ describe('AccountManagement', () => {
     return actions2D.flat();
   }
 
+  async function doSignUpTxn(userPrivateKey: PrivateKey) {
+    const txn = await Mina.transaction(userPrivateKey, () => {
+      zkApp.requestSignUp(userPrivateKey.toPublicKey());
+    });
+    await txn.prove();
+    await txn.sign([userPrivateKey]).send();
+  }
+
   it('successfully deploys the `AccountManagement` smart contract', async () => {
     await localDeploy();
+
     const startOfAllActions = zkApp.startOfAllActions.get();
     const accountNumber = zkApp.accountNumber.get();
     const numberOfPendingActions = zkApp.numberOfPendingActions.get();
@@ -140,12 +149,7 @@ describe('AccountManagement', () => {
   it('emits proper sign-up request action when the `requestSignUp` method is executed', async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
-
+    await doSignUpTxn(user1PrivateKey);
     const actions = getAllActions();
 
     expect(actions.length).toEqual(1);
@@ -158,18 +162,8 @@ describe('AccountManagement', () => {
   it('emits 2 proper sign-up request actions when the `requestSignUp` method is executed 2 times with different accounts', async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
-
-    const txn2 = await Mina.transaction(user2PrivateKey, () => {
-      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
-    });
-    await txn2.prove();
-    await txn2.sign([user2PrivateKey]).send();
-
+    await doSignUpTxn(user1PrivateKey);
+    await doSignUpTxn(user2PrivateKey);
     const actions = getAllActions();
 
     expect(actions.length).toEqual(2);
@@ -200,29 +194,17 @@ describe('AccountManagement', () => {
     await localDeploy();
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
-
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
-
+    await doSignUpTxn(user1PrivateKey);
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(initialBalance));
   });
 
   it('throws an error when `requestSignUp` is called with an account already requested to be signed-up', async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
+    await doSignUpTxn(user1PrivateKey);
 
     expect(async () => {
-      await Mina.transaction(user1PrivateKey, () => {
-        zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-      });
+      await doSignUpTxn(user1PrivateKey);
     }).rejects.toThrowError('assert_equal: 1 != 0');
   });
 
@@ -234,11 +216,7 @@ describe('AccountManagement', () => {
     const startOfActionsRange = zkApp.startOfActionsRange.get();
     const endOfActionsRange = zkApp.endOfActionsRange.get();
 
-    const txn = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.setRangeOfActionsToBeProcessed();
-    });
-    await txn.prove();
-    await txn.send();
+    await doSignUpTxn(user1PrivateKey);
 
     expect(numberOfPendingActions).toEqual(Field(0));
     expect(startOfActionsRange).toEqual(Reducer.initialActionsHash);
@@ -249,23 +227,14 @@ describe('AccountManagement', () => {
         'setRangeOfActionsToBeProcessed' is executed when 2 actions have been emitted`, async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
+    await doSignUpTxn(user1PrivateKey);
+    await doSignUpTxn(user2PrivateKey);
 
-    const txn2 = await Mina.transaction(user2PrivateKey, () => {
-      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
-    });
-    await txn2.prove();
-    await txn2.sign([user2PrivateKey]).send();
-
-    const txn3 = await Mina.transaction(user1PrivateKey, () => {
+    const txn = await Mina.transaction(user1PrivateKey, () => {
       zkApp.setRangeOfActionsToBeProcessed();
     });
-    await txn3.prove();
-    await txn3.send();
+    await txn.prove();
+    await txn.send();
 
     const expectedNumberOfPendingActions = 2;
     const numberOfPendingActions = zkApp.numberOfPendingActions.get();
@@ -281,17 +250,8 @@ describe('AccountManagement', () => {
   test(`process 2 sign-up requests when executing 'processSignUpRequestAction'`, async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
-
-    const txn2 = await Mina.transaction(user2PrivateKey, () => {
-      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
-    });
-    await txn2.prove();
-    await txn2.sign([user2PrivateKey]).send();
+    await doSignUpTxn(user1PrivateKey);
+    await doSignUpTxn(user2PrivateKey);
 
     const txn3 = await Mina.transaction(deployerAccount, () => {
       zkApp.setRangeOfActionsToBeProcessed();
@@ -322,17 +282,13 @@ describe('AccountManagement', () => {
         then emit a new one, set the range, and process it`, async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
+    await doSignUpTxn(user1PrivateKey);
 
-    const txn2 = await Mina.transaction(deployerAccount, () => {
+    const txn = await Mina.transaction(deployerAccount, () => {
       zkApp.setRangeOfActionsToBeProcessed();
     });
-    await txn2.prove();
-    await txn2.send();
+    await txn.prove();
+    await txn.send();
 
     user1AsAccount.actionOrigin = signUpMethodID;
 
@@ -350,11 +306,7 @@ describe('AccountManagement', () => {
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
     expect(zkApp.actionTurn.get()).toEqual(Field(1));
 
-    const txn3 = await Mina.transaction(user2PrivateKey, () => {
-      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
-    });
-    await txn3.prove();
-    await txn3.sign([user2PrivateKey]).send();
+    await doSignUpTxn(user2PrivateKey);
 
     const txn4 = await Mina.transaction(deployerAccount, () => {
       zkApp.setRangeOfActionsToBeProcessed();
@@ -380,11 +332,7 @@ describe('AccountManagement', () => {
         not corresponding to the account number should throw an error`, async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
+    await doSignUpTxn(user1PrivateKey);
 
     const txn2 = await Mina.transaction(deployerAccount, () => {
       zkApp.setRangeOfActionsToBeProcessed();
@@ -406,11 +354,7 @@ describe('AccountManagement', () => {
         throws the expected error`, async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
+    await doSignUpTxn(user1PrivateKey);
 
     const txn2 = await Mina.transaction(deployerAccount, () => {
       zkApp.setRangeOfActionsToBeProcessed();
@@ -465,17 +409,8 @@ describe('AccountManagement', () => {
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
-
-    const txn2 = await Mina.transaction(user2PrivateKey, () => {
-      zkApp.requestSignUp(user2PrivateKey.toPublicKey());
-    });
-    await txn2.prove();
-    await txn2.sign([user2PrivateKey]).send();
+    await doSignUpTxn(user1PrivateKey);
+    await doSignUpTxn(user2PrivateKey);
 
     const txn3 = await Mina.transaction(deployerAccount, () => {
       zkApp.setRangeOfActionsToBeProcessed();
@@ -530,11 +465,7 @@ describe('AccountManagement', () => {
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
-      zkApp.requestSignUp(user1PrivateKey.toPublicKey());
-    });
-    await txn1.prove();
-    await txn1.sign([user1PrivateKey]).send();
+    await doSignUpTxn(user1PrivateKey);
 
     const newUserPrivateKey = PrivateKey.random();
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
