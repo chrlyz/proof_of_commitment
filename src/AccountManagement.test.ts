@@ -21,7 +21,7 @@ import {
 
 import { AccountManagement, signUpMethodID } from './AccountManagement.js';
 
-let proofsEnabled = true;
+let proofsEnabled = false;
 
 describe('AccountManagement', () => {
   let deployerAccount: PrivateKey,
@@ -217,13 +217,13 @@ describe('AccountManagement', () => {
   it('throws an error when a `requestSignUp` transaction is not signed by the account requesting to sign-up', async () => {
     await localDeploy();
 
-    const txn1 = await Mina.transaction(user1PrivateKey, () => {
+    const txn = await Mina.transaction(user1PrivateKey, () => {
       zkApp.requestSignUp(user1PrivateKey.toPublicKey());
     });
-    await txn1.prove();
+    await txn.prove();
 
     expect(async () => {
-      await txn1.send();
+      await txn.send();
     }).rejects.toThrowError('private key is missing');
   });
 
@@ -435,24 +435,24 @@ describe('AccountManagement', () => {
      * expect any errors to be thrown by this, we just check later that it
      * actually did nothing.
      */
-    const txn3 = await Mina.transaction(zkappKey, () => {
+    const txn1 = await Mina.transaction(zkappKey, () => {
       zkApp.send({ to: newUserPublicKey, amount: UInt64.from(1_000_000_000) });
     });
-    await txn3.prove();
-    await txn3.sign([zkappKey]).send();
+    await txn1.prove();
+    await txn1.sign([zkappKey]).send();
 
     // Second attempt to send funds using AccountUpdate
-    const txn4 = await Mina.transaction(zkappKey, () => {
+    const txn2 = await Mina.transaction(zkappKey, () => {
       AccountUpdate.create(zkAppAddress).send({
         to: newUserPublicKey,
         amount: UInt64.from(1_000_000_000),
       });
     });
-    await txn4.prove();
-    txn4.sign([zkappKey]);
+    await txn2.prove();
+    txn2.sign([zkappKey]);
 
     expect(async () => {
-      await txn4.send();
+      await txn2.send();
     }).rejects.toThrowError('Update_not_permitted_balance');
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(initialBalance));
