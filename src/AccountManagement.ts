@@ -155,6 +155,49 @@ export class AccountManagement extends SmartContract {
   }
 
   @method processSignUpRequestAction(accountWitness: AccountWitness) {
+    const actionWithMetadata = this.getCurrentAction();
+    const action = actionWithMetadata.action;
+
+    /* Validate that the account was registered using the account number
+     * as the index for the merkle tree.
+     */
+    accountWitness.calculateIndex().assertEquals(action.accountNumber);
+
+    /* Convert action into its proper Account type, so its methods
+     * become available.
+     */
+    let typedAction = new Account(action);
+
+    /* Update the merkle tree root, so it includes the new registered
+     * account.
+     */
+    this.accountsRoot.set(accountWitness.calculateRoot(typedAction.hash()));
+
+    /* Advance to the turn of the next action to be processed, and decrease the
+     * number of pending actions to account for the one we processed.
+     */
+    this.actionTurn.set(actionWithMetadata.actionTurn.add(1));
+
+    const numberOfPendingActions = this.numberOfPendingActions.get();
+    this.numberOfPendingActions.assertEquals(numberOfPendingActions);
+    this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
+  }
+
+  @method releaseFunds(from: PublicKey, to: PublicKey, amount: UInt64) {
+    AccountUpdate.create(from).requireSignature();
+    this.send({ to, amount });
+
+    const action = new Account({
+      publicKey: from,
+      accountNumber: Field(0),
+      balance: amount,
+      actionOrigin: UInt32.from(2),
+    });
+
+    this.reducer.dispatch(action);
+  }
+
+  getCurrentAction() {
     /* Traverse current range of pending actions, to recover
      * the current action that needs to be processed. */
 
@@ -209,40 +252,11 @@ export class AccountManagement extends SmartContract {
       }
     );
 
-    /* Validate that the account was registered using the account number
-     * as the index for the merkle tree.
-     */
-    accountWitness.calculateIndex().assertEquals(action.accountNumber);
-
-    /* Convert action into its proper Account type, so its methods
-     * become available.
-     */
-    let typedAction = new Account(action);
-
-    /* Finally update the merkle tree root, so it includes the new registered
-     * account. Advance to the turn of the next action to be processed, and
-     * decrease the number of pending actions to account for the one we processed.
-     */
-    this.accountsRoot.set(accountWitness.calculateRoot(typedAction.hash()));
-
-    this.actionTurn.set(actionTurn.add(1));
-
-    const numberOfPendingActions = this.numberOfPendingActions.get();
-    this.numberOfPendingActions.assertEquals(numberOfPendingActions);
-    this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
-  }
-
-  @method releaseFunds(from: PublicKey, to: PublicKey, amount: UInt64) {
-    AccountUpdate.create(from).requireSignature();
-    this.send({ to, amount });
-
-    const action = new Account({
-      publicKey: from,
-      accountNumber: Field(0),
-      balance: amount,
-      actionOrigin: UInt32.from(2),
-    });
-
-    this.reducer.dispatch(action);
+    return {
+      action: action,
+      startOfActionsRange: startOfActionsRange,
+      endOfActionsRange: endOfActionsRange,
+      actionTurn: actionTurn,
+    };
   }
 }
