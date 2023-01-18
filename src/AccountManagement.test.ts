@@ -19,9 +19,13 @@ import {
   initialBalance,
 } from './Account.js';
 
-import { AccountManagement, signUpMethodID } from './AccountManagement.js';
+import {
+  AccountManagement,
+  signUpMethodID,
+  root,
+} from './AccountManagement.js';
 
-let proofsEnabled = false;
+let proofsEnabled = true;
 
 describe('AccountManagement', () => {
   let deployerAccount: PrivateKey,
@@ -180,7 +184,7 @@ describe('AccountManagement', () => {
     expect(actionTurn).toEqual(Field(0));
     expect(startOfActionsRange).toEqual(Reducer.initialActionsHash);
     expect(endOfActionsRange).toEqual(Reducer.initialActionsHash);
-    expect(accountsRoot).toEqual(Field(0));
+    expect(accountsRoot).toEqual(root);
   });
 
   it('emits proper sign-up request action when the `requestSignUp` method is executed', async () => {
@@ -383,6 +387,34 @@ describe('AccountManagement', () => {
     expect(async () => {
       zkApp.processSignUpRequestAction(accountWitness);
     }).rejects.toThrowError('assert_equal: 2 != 1');
+  });
+
+  test(`Feeding the 'processSignUpRequestAction' with an invalid witness throws the expected error`, async () => {
+    await localDeploy();
+    await doSignUpTxn(user1PrivateKey);
+    await doSetActionsRangeTxn();
+    const range1 = getActionsRange();
+    await processSignUpActions(range1.actions, tree);
+
+    await doSignUpTxn(user2PrivateKey);
+    await doSetActionsRangeTxn();
+    const range2 = getActionsRange();
+
+    let typedAction = new Account(range2.actions[0]);
+
+    const wrongTree = new MerkleTree(21);
+    wrongTree.setLeaf(0n, Field(1));
+
+    wrongTree.setLeaf(
+      range2.actions[0].accountNumber.toBigInt(),
+      typedAction.hash()
+    );
+    let aw = wrongTree.getWitness(range2.actions[0].accountNumber.toBigInt());
+    let accountWitness = new AccountWitness(aw);
+
+    expect(async () => {
+      zkApp.processSignUpRequestAction(accountWitness);
+    }).rejects.toThrowError('assert_equal: 95689000');
   });
 
   test(`when 'releaseFunds' is executed, it sends the right amount to the right address, and the balance from

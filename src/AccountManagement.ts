@@ -14,6 +14,7 @@ import {
   Circuit,
   UInt64,
   UInt32,
+  MerkleTree,
 } from 'snarkyjs';
 
 import {
@@ -27,6 +28,8 @@ await isReady;
 
 export const signUpMethodID = UInt32.from(1);
 export const releaseFundsMethodID = UInt32.from(2);
+const tree = new MerkleTree(21);
+export const root = tree.getRoot();
 
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });
@@ -51,7 +54,7 @@ export class AccountManagement extends SmartContract {
     this.actionTurn.set(Field(0));
     this.startOfActionsRange.set(Reducer.initialActionsHash);
     this.endOfActionsRange.set(Reducer.initialActionsHash);
-    this.accountsRoot.set(Field(0));
+    this.accountsRoot.set(root);
   }
 
   @method requestSignUp(publicKey: PublicKey) {
@@ -109,8 +112,8 @@ export class AccountManagement extends SmartContract {
 
   @method setRangeOfActionsToBeProcessed() {
     /* Get number of pending actions and make sure that there are no
-     * pending actions to be processed. */
-
+     * pending actions to be processed.
+     */
     const numberOfPendingActions = this.numberOfPendingActions.get();
     this.numberOfPendingActions.assertEquals(numberOfPendingActions);
     this.numberOfPendingActions.assertEquals(Field(0));
@@ -122,8 +125,8 @@ export class AccountManagement extends SmartContract {
      * use it as the starting point of the next range of actions
      * to be processed. Then count all the actions within the new
      * range, and get the action hash of the last action for the new
-     * range. */
-
+     * range.
+     */
     const endOfActionsRange = this.endOfActionsRange.get();
     this.endOfActionsRange.assertEquals(endOfActionsRange);
 
@@ -148,8 +151,8 @@ export class AccountManagement extends SmartContract {
 
     /* Finally set the action hash of the last processed action as the
      * start of the new range, and the action hash of the last action for
-     * the new range. */
-
+     * the new range.
+     */
     const startOfActionsRange = this.startOfActionsRange.get();
     this.startOfActionsRange.assertEquals(startOfActionsRange);
 
@@ -158,6 +161,14 @@ export class AccountManagement extends SmartContract {
   }
 
   @method processSignUpRequestAction(accountWitness: AccountWitness) {
+    // Validate that the provided witness comes from the tree we committed to
+    const accountsRoot = this.accountsRoot.get();
+    this.accountsRoot.assertEquals(accountsRoot);
+    accountWitness.calculateRoot(Field(0)).assertEquals(accountsRoot);
+
+    /* Get the action to be processed and associated data with this operation.
+     * Then check that the action was emitted by the corresponding method.
+     */
     const actionWithMetadata = this.getCurrentAction();
     const action = actionWithMetadata.action;
     action.actionOrigin.assertEquals(signUpMethodID);
@@ -203,8 +214,8 @@ export class AccountManagement extends SmartContract {
 
   getCurrentAction() {
     /* Traverse current range of pending actions, to recover
-     * the current action that needs to be processed. */
-
+     * the current action that needs to be processed.
+     */
     const startOfActionsRange = this.startOfActionsRange.get();
     this.startOfActionsRange.assertEquals(startOfActionsRange);
 
