@@ -17,12 +17,7 @@ import {
   MerkleTree,
 } from 'snarkyjs';
 
-import {
-  Account,
-  stateType,
-  AccountWitness,
-  initialBalance,
-} from './Account.js';
+import { Account, AccountWitness, initialBalance } from './Account.js';
 
 await isReady;
 
@@ -90,7 +85,7 @@ export class AccountManagement extends SmartContract {
     let { state: exists } = this.reducer.reduce(
       actions,
       Bool,
-      (state: Bool, action: { publicKey: PublicKey }) => {
+      (state, action) => {
         return action.publicKey.equals(publicKey).or(state);
       },
       { state: Bool(false), actionsHash: startOfAllActions }
@@ -140,7 +135,7 @@ export class AccountManagement extends SmartContract {
     } = this.reducer.reduce(
       actions,
       Field,
-      (state: Field) => {
+      (state) => {
         return state.add(Field(1));
       },
       { state: Field(0), actionsHash: endOfActionsRange }
@@ -233,7 +228,7 @@ export class AccountManagement extends SmartContract {
     let index = Field(0);
     const { state: action } = this.reducer.reduce(
       actions,
-      stateType,
+      Account,
       (state, action) => {
         let isCurrentAction = index.equals(actionTurn);
         index = index.add(1);

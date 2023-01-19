@@ -7,7 +7,6 @@ import {
   UInt64,
   MerkleWitness,
   UInt32,
-  provable,
 } from 'snarkyjs';
 
 await isReady;
@@ -38,5 +37,3 @@ export class AccountShape extends Struct({
   balance: UInt64,
   actionOrigin: UInt32,
 }) {}
-
-export const stateType = provable(Account);
