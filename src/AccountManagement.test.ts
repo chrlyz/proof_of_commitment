@@ -12,12 +12,7 @@ import {
   UInt32,
 } from 'snarkyjs';
 
-import {
-  Account,
-  AccountShape,
-  AccountWitness,
-  initialBalance,
-} from './Account.js';
+import { Account, AccountWitness, initialBalance } from './Account.js';
 
 import {
   AccountManagement,
@@ -87,28 +82,19 @@ describe('AccountManagement', () => {
     await txn.send();
   }
 
-  async function processSignUpActions(
-    actions: AccountShape[],
-    tree: MerkleTree
-  ) {
-    for (let action of actions) {
-      action.actionOrigin.assertEquals(signUpMethodID);
-      let accountState = new Account({
-        publicKey: action.publicKey,
-        accountNumber: zkApp.accountNumber.get(),
-        balance: action.balance,
-        actionOrigin: action.actionOrigin,
-      });
-      tree.setLeaf(accountState.accountNumber.toBigInt(), accountState.hash());
-      let aw = tree.getWitness(accountState.accountNumber.toBigInt());
-      let accountWitness = new AccountWitness(aw);
+  async function processSignUpAction(action: Account, tree: MerkleTree) {
+    action.actionOrigin.assertEquals(signUpMethodID);
+    action.accountNumber = zkApp.accountNumber.get();
+    tree.setLeaf(action.accountNumber.toBigInt(), action.hash());
+    let aw = tree.getWitness(action.accountNumber.toBigInt());
+    let accountWitness = new AccountWitness(aw);
 
-      const txn = await Mina.transaction(deployerAccount, () => {
-        zkApp.processSignUpRequestAction(accountWitness);
-      });
-      await txn.prove();
-      await txn.send();
-    }
+    const txn = await Mina.transaction(deployerAccount, () => {
+      zkApp.processSignUpRequestAction(accountWitness);
+    });
+    await txn.prove();
+    await txn.send();
+    return { actionWithAccountNumber: action, accountWitness: accountWitness };
   }
 
   function getActionsRange() {
@@ -311,7 +297,10 @@ describe('AccountManagement', () => {
     await doSetActionsRangeTxn();
 
     const range = getActionsRange();
-    await processSignUpActions(range.actions, tree);
+
+    for (let action of range.actions) {
+      await processSignUpAction(action, tree);
+    }
 
     user1AsAccount.actionOrigin = signUpMethodID;
     user2AsAccount.actionOrigin = signUpMethodID;
@@ -341,7 +330,9 @@ describe('AccountManagement', () => {
     const expectedTreeRoot1 = expectedTree.getRoot();
 
     const range1 = getActionsRange();
-    await processSignUpActions(range1.actions, tree);
+    for (let action of range1.actions) {
+      await processSignUpAction(action, tree);
+    }
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot1);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -356,8 +347,9 @@ describe('AccountManagement', () => {
     const expectedTreeRoot2 = expectedTree.getRoot();
 
     const range2 = getActionsRange();
-
-    await processSignUpActions(range2.actions, tree);
+    for (let action of range2.actions) {
+      await processSignUpAction(action, tree);
+    }
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot2);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -386,19 +378,19 @@ describe('AccountManagement', () => {
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
     const range1 = getActionsRange();
-    await processSignUpActions(range1.actions, tree);
+    for (let action of range1.actions) {
+      await processSignUpAction(action, tree);
+    }
 
     await doSignUpTxn(user2PrivateKey);
     await doSetActionsRangeTxn();
     const range2 = getActionsRange();
-
     let accountState = new Account({
       publicKey: range2.actions[0].publicKey,
       accountNumber: zkApp.accountNumber.get(),
       balance: range2.actions[0].balance,
       actionOrigin: range2.actions[0].actionOrigin,
     });
-
     const wrongTree = new MerkleTree(21);
     wrongTree.setLeaf(0n, Field(1));
     wrongTree.setLeaf(
@@ -419,27 +411,14 @@ describe('AccountManagement', () => {
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
     const range = getActionsRange();
-    let accountState = new Account({
-      publicKey: range.actions[0].publicKey,
-      accountNumber: zkApp.accountNumber.get(),
-      balance: range.actions[0].balance,
-      actionOrigin: range.actions[0].actionOrigin,
-    });
-    const user1AccountNumberAsBI = zkApp.accountNumber.get().toBigInt();
-    tree.setLeaf(user1AccountNumberAsBI, accountState.hash());
-    const aw1 = tree.getWitness(user1AccountNumberAsBI);
-    const accountWitness1 = new AccountWitness(aw1);
-    const txn = await Mina.transaction(deployerAccount, () => {
-      zkApp.processSignUpRequestAction(accountWitness1);
-    });
-    await txn.prove();
-    await txn.send();
+    const { actionWithAccountNumber, accountWitness } =
+      await processSignUpAction(range.actions[0], tree);
 
     const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
     await doReleaseFundsRequestTxn(
       user1PrivateKey,
-      accountState,
-      accountWitness1,
+      actionWithAccountNumber,
+      accountWitness,
       newUserPrivateKey.toPublicKey(),
       1_000_000_000
     );
@@ -462,9 +441,10 @@ describe('AccountManagement', () => {
     await doSignUpTxn(user1PrivateKey);
     await doSignUpTxn(user2PrivateKey);
     await doSetActionsRangeTxn();
-
     const range1 = getActionsRange();
-    await processSignUpActions(range1.actions, tree);
+    for (let action of range1.actions) {
+      await processSignUpAction(action, tree);
+    }
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(
       UInt64.from(initialBalance).mul(2)
