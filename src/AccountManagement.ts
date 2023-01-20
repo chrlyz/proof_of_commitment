@@ -22,7 +22,7 @@ import { Account, AccountWitness, initialBalance } from './Account.js';
 await isReady;
 
 export const signUpMethodID = UInt32.from(1);
-export const releaseFundsMethodID = UInt32.from(2);
+export const releaseFundsRequestMethodID = UInt32.from(2);
 const tree = new MerkleTree(21);
 export const root = tree.getRoot();
 
@@ -91,7 +91,7 @@ export class AccountManagement extends SmartContract {
       publicKey: publicKey,
       accountNumber: Field(0),
       balance: initialBalance,
-      actionOrigin: UInt32.from(1),
+      actionOrigin: signUpMethodID,
     });
     this.reducer.dispatch(account);
   }
@@ -199,18 +199,29 @@ export class AccountManagement extends SmartContract {
     this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
   }
 
-  @method releaseFunds(from: PublicKey, to: PublicKey, amount: UInt64) {
-    AccountUpdate.create(from).requireSignature();
-    this.send({ to, amount });
-
-    const action = new Account({
-      publicKey: from,
-      accountNumber: Field(0),
-      balance: amount,
-      actionOrigin: UInt32.from(releaseFundsMethodID),
+  @method releaseFundsRequest(
+    account: Account,
+    accountWitness: AccountWitness,
+    to: PublicKey,
+    amount: UInt64
+  ) {
+    // Validate that the account state is within our on-chain tree.
+    const accountsRoot = this.accountsRoot.get();
+    this.accountsRoot.assertEquals(accountsRoot);
+    accountWitness.calculateRoot(account.hash()).assertEquals(accountsRoot);
+    // Make sure user has enough funds to release.
+    amount.assertLte(account.balance);
+    // Require the signature of the user.
+    AccountUpdate.create(account.publicKey).requireSignature();
+    // Substract released amount from balance in a new instance
+    let newAccountState = new Account({
+      publicKey: account.publicKey,
+      accountNumber: account.accountNumber,
+      balance: account.balance.sub(amount),
+      actionOrigin: releaseFundsRequestMethodID,
     });
-
-    this.reducer.dispatch(action);
+    // Dispatch the new state of the account.
+    this.reducer.dispatch(newAccountState);
   }
 
   getCurrentAction() {

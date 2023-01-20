@@ -23,6 +23,7 @@ import {
   AccountManagement,
   signUpMethodID,
   root,
+  releaseFundsRequestMethodID,
 } from './AccountManagement.js';
 
 let proofsEnabled = false;
@@ -145,13 +146,20 @@ describe('AccountManagement', () => {
     await txn.send();
   }
 
-  async function doReleaseFundsTxn(
+  async function doReleaseFundsRequestTxn(
     releaser: PrivateKey,
+    releaserAccount: Account,
+    accountWitness: AccountWitness,
     receiver: PublicKey,
     amount: number
   ) {
     const txn = await Mina.transaction(releaser, () => {
-      zkApp.releaseFunds(releaser.toPublicKey(), receiver, UInt64.from(amount));
+      zkApp.releaseFundsRequest(
+        releaserAccount,
+        accountWitness,
+        receiver,
+        UInt64.from(amount)
+      );
     });
     await txn.prove();
     await txn.sign([releaser]).send();
@@ -361,39 +369,6 @@ describe('AccountManagement', () => {
     }).rejects.toThrowError('assert_equal: 1 != 3');
   });
 
-  test(`Trying to process an action not emitted by requestSignUp, with processSignUpRequestAction
-        throws the expected error`, async () => {
-    await localDeploy();
-    await doSignUpTxn(user1PrivateKey);
-
-    await doSetActionsRangeTxn();
-    const range1 = getActionsRange();
-
-    await processSignUpActions(range1.actions, tree);
-
-    const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
-    await doReleaseFundsTxn(
-      user1PrivateKey,
-      newUserPrivateKey.toPublicKey(),
-      1_000_000_000
-    );
-
-    await doSetActionsRangeTxn();
-    const range2 = getActionsRange();
-
-    let typedAction = new Account(range2.actions[0]);
-    tree.setLeaf(
-      range2.actions[0].accountNumber.toBigInt(),
-      typedAction.hash()
-    );
-    let aw = tree.getWitness(range2.actions[0].accountNumber.toBigInt());
-    let accountWitness = new AccountWitness(aw);
-
-    expect(async () => {
-      zkApp.processSignUpRequestAction(accountWitness);
-    }).rejects.toThrowError('assert_equal: 2 != 1');
-  });
-
   test(`Feeding the 'processSignUpRequestAction' with an invalid witness throws the expected error`, async () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
@@ -423,8 +398,48 @@ describe('AccountManagement', () => {
     }).rejects.toThrowError('assert_equal: 95689000');
   });
 
-  test(`when 'releaseFunds' is executed, it sends the right amount to the right address, and the balance from
-        the sender gets updated accordingly`, async () => {
+  test(`Trying to process an action not emitted by requestSignUp, with
+        processSignUpRequestAction throws the expected error`, async () => {
+    await localDeploy();
+    await doSignUpTxn(user1PrivateKey);
+    await doSetActionsRangeTxn();
+    const range = getActionsRange();
+    let typedAction = new Account({
+      publicKey: range.actions[0].publicKey,
+      accountNumber: zkApp.accountNumber.get(),
+      balance: range.actions[0].balance,
+      actionOrigin: range.actions[0].actionOrigin,
+    });
+    const user1AccountNumberAsBI = zkApp.accountNumber.get().toBigInt();
+    tree.setLeaf(user1AccountNumberAsBI, typedAction.hash());
+    const aw1 = tree.getWitness(user1AccountNumberAsBI);
+    const accountWitness1 = new AccountWitness(aw1);
+    const txn = await Mina.transaction(deployerAccount, () => {
+      zkApp.processSignUpRequestAction(accountWitness1);
+    });
+    await txn.prove();
+    await txn.send();
+
+    const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
+    await doReleaseFundsRequestTxn(
+      user1PrivateKey,
+      typedAction,
+      accountWitness1,
+      newUserPrivateKey.toPublicKey(),
+      1_000_000_000
+    );
+    await doSetActionsRangeTxn();
+
+    const user2AccountNumber = zkApp.accountNumber.get().toBigInt();
+    const aw2 = tree.getWitness(user2AccountNumber);
+    const accountWitness2 = new AccountWitness(aw2);
+    expect(async () => {
+      zkApp.processSignUpRequestAction(accountWitness2);
+    }).rejects.toThrowError('assert_equal: 2 != 1');
+  });
+
+  test(`when 'releaseFundsRequest' is executed for 2 accounts already signed-up,
+        2 releaseFundsRequest actions are properly emitted`, async () => {
     await localDeploy();
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
@@ -443,14 +458,50 @@ describe('AccountManagement', () => {
     const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
-    await doReleaseFundsTxn(user1PrivateKey, newUserPublicKey, 1_000_000_000);
-    await doReleaseFundsTxn(user2PrivateKey, newUserPublicKey, 2_500_000_000);
-
-    expect(Mina.getBalance(zkAppAddress)).toEqual(
-      UInt64.from(initialBalance).mul(2).sub(3_500_000_000)
+    user1AsAccount.actionOrigin = UInt32.from(1);
+    const user1W = tree.getWitness(1n);
+    const user1AccountWitness = new AccountWitness(user1W);
+    await doReleaseFundsRequestTxn(
+      user1PrivateKey,
+      user1AsAccount,
+      user1AccountWitness,
+      newUserPublicKey,
+      1_000_000_000
     );
-    expect(Mina.getBalance(newUserPublicKey)).toEqual(
-      UInt64.from(3_500_000_001)
+
+    user2AsAccount.actionOrigin = UInt32.from(1);
+    const user2W = tree.getWitness(2n);
+    const user2AccountWitness = new AccountWitness(user2W);
+    await doReleaseFundsRequestTxn(
+      user2PrivateKey,
+      user2AsAccount,
+      user2AccountWitness,
+      newUserPublicKey,
+      2_500_000_000
+    );
+
+    await doSetActionsRangeTxn();
+    const newRange = getActionsRange();
+
+    expect(newRange.actions[0].publicKey).toEqual(user1AsAccount.publicKey);
+    expect(newRange.actions[0].accountNumber).toEqual(
+      user1AsAccount.accountNumber
+    );
+    expect(newRange.actions[0].balance).toEqual(
+      initialBalance.sub(1_000_000_000)
+    );
+    expect(newRange.actions[0].actionOrigin).toEqual(
+      releaseFundsRequestMethodID
+    );
+    expect(newRange.actions[1].publicKey).toEqual(user2AsAccount.publicKey);
+    expect(newRange.actions[1].accountNumber).toEqual(
+      user2AsAccount.accountNumber
+    );
+    expect(newRange.actions[1].balance).toEqual(
+      initialBalance.sub(2_500_000_000)
+    );
+    expect(newRange.actions[1].actionOrigin).toEqual(
+      releaseFundsRequestMethodID
     );
   });
 
