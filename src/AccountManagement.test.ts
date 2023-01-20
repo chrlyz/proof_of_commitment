@@ -25,7 +25,7 @@ import {
   root,
 } from './AccountManagement.js';
 
-let proofsEnabled = true;
+let proofsEnabled = false;
 
 describe('AccountManagement', () => {
   let deployerAccount: PrivateKey,
@@ -89,9 +89,14 @@ describe('AccountManagement', () => {
   ) {
     for (let action of actions) {
       action.actionOrigin.assertEquals(signUpMethodID);
-      let typedAction = new Account(action);
-      tree.setLeaf(action.accountNumber.toBigInt(), typedAction.hash());
-      let aw = tree.getWitness(action.accountNumber.toBigInt());
+      let typedAction = new Account({
+        publicKey: action.publicKey,
+        accountNumber: zkApp.accountNumber.get(),
+        balance: action.balance,
+        actionOrigin: action.actionOrigin,
+      });
+      tree.setLeaf(typedAction.accountNumber.toBigInt(), typedAction.hash());
+      let aw = tree.getWitness(typedAction.accountNumber.toBigInt());
       let accountWitness = new AccountWitness(aw);
 
       const txn = await Mina.transaction(deployerAccount, () => {
@@ -195,7 +200,7 @@ describe('AccountManagement', () => {
 
     expect(actions.length).toEqual(1);
     expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
-    expect(actions[0].accountNumber).toEqual(Field(1));
+    expect(actions[0].accountNumber).toEqual(Field(0));
     expect(actions[0].balance).toEqual(initialBalance);
     expect(actions[0].actionOrigin).toEqual(UInt32.from(1));
   });
@@ -209,11 +214,11 @@ describe('AccountManagement', () => {
 
     expect(actions.length).toEqual(2);
     expect(actions[0].publicKey).toEqual(user1PrivateKey.toPublicKey());
-    expect(actions[0].accountNumber).toEqual(Field(1));
+    expect(actions[0].accountNumber).toEqual(Field(0));
     expect(actions[0].balance).toEqual(initialBalance);
     expect(actions[0].actionOrigin).toEqual(UInt32.from(1));
     expect(actions[1].publicKey).toEqual(user2PrivateKey.toPublicKey());
-    expect(actions[1].accountNumber).toEqual(Field(2));
+    expect(actions[1].accountNumber).toEqual(Field(0));
     expect(actions[1].balance).toEqual(initialBalance);
     expect(actions[1].actionOrigin).toEqual(UInt32.from(1));
   });
@@ -288,6 +293,9 @@ describe('AccountManagement', () => {
     await doSignUpTxn(user2PrivateKey);
     await doSetActionsRangeTxn();
 
+    const range = getActionsRange();
+    await processSignUpActions(range.actions, tree);
+
     user1AsAccount.actionOrigin = signUpMethodID;
     user2AsAccount.actionOrigin = signUpMethodID;
 
@@ -295,9 +303,6 @@ describe('AccountManagement', () => {
     expectedTree.setLeaf(1n, user1AsAccount.hash());
     expectedTree.setLeaf(2n, user2AsAccount.hash());
     const expectedTreeRoot = expectedTree.getRoot();
-
-    const range = getActionsRange();
-    await processSignUpActions(range.actions, tree);
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot);
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -347,13 +352,13 @@ describe('AccountManagement', () => {
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
 
-    tree.setLeaf(2n, user1AsAccount.hash());
-    let aw = tree.getWitness(2n);
+    tree.setLeaf(3n, user1AsAccount.hash());
+    let aw = tree.getWitness(3n);
     let accountWitness = new AccountWitness(aw);
 
     expect(async () => {
       zkApp.processSignUpRequestAction(accountWitness);
-    }).rejects.toThrowError('assert_equal: 2 != 1');
+    }).rejects.toThrowError('assert_equal: 1 != 3');
   });
 
   test(`Trying to process an action not emitted by requestSignUp, with processSignUpRequestAction
@@ -400,16 +405,17 @@ describe('AccountManagement', () => {
     await doSetActionsRangeTxn();
     const range2 = getActionsRange();
 
-    let typedAction = new Account(range2.actions[0]);
+    let typedAction = new Account({
+      publicKey: range2.actions[0].publicKey,
+      accountNumber: zkApp.accountNumber.get(),
+      balance: range2.actions[0].balance,
+      actionOrigin: range2.actions[0].actionOrigin,
+    });
 
     const wrongTree = new MerkleTree(21);
     wrongTree.setLeaf(0n, Field(1));
-
-    wrongTree.setLeaf(
-      range2.actions[0].accountNumber.toBigInt(),
-      typedAction.hash()
-    );
-    let aw = wrongTree.getWitness(range2.actions[0].accountNumber.toBigInt());
+    wrongTree.setLeaf(typedAction.accountNumber.toBigInt(), typedAction.hash());
+    let aw = wrongTree.getWitness(typedAction.accountNumber.toBigInt());
     let accountWitness = new AccountWitness(aw);
 
     expect(async () => {

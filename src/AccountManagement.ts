@@ -65,12 +65,6 @@ export class AccountManagement extends SmartContract {
     accountUpdate.requireSignature();
     accountUpdate.send({ to: this.address, amount: initialBalance });
 
-    /* Get the current available account number to assign to
-     * the user.
-     */
-    const accountNumber = this.accountNumber.get();
-    this.accountNumber.assertEquals(accountNumber);
-
     /* Check all actions to see if the public key isn't
      * already registered. If not, emit action representing
      * the sign-up request.
@@ -95,14 +89,11 @@ export class AccountManagement extends SmartContract {
 
     let account = new Account({
       publicKey: publicKey,
-      accountNumber: accountNumber,
+      accountNumber: Field(0),
       balance: initialBalance,
       actionOrigin: UInt32.from(1),
     });
     this.reducer.dispatch(account);
-
-    // Update current available account number.
-    this.accountNumber.set(accountNumber.add(Field(1)));
   }
 
   @method setRangeOfActionsToBeProcessed() {
@@ -168,15 +159,30 @@ export class AccountManagement extends SmartContract {
     const action = actionWithMetadata.action;
     action.actionOrigin.assertEquals(signUpMethodID);
 
-    /* Validate that the account was registered using the account number
-     * as the index for the merkle tree.
+    /* Get the current available account number to assign to
+     * the user.
      */
-    accountWitness.calculateIndex().assertEquals(action.accountNumber);
+    const accountNumber = this.accountNumber.get();
+    this.accountNumber.assertEquals(accountNumber);
 
     /* Convert action into its proper Account type, so its methods
-     * become available.
+     * become available. And assign corresponding accountNumber.
      */
-    let typedAction = new Account(action);
+    let typedAction = new Account({
+      publicKey: action.publicKey,
+      accountNumber: accountNumber,
+      balance: action.balance,
+      actionOrigin: action.actionOrigin,
+    });
+
+    /* Check that the provided accountWitness comes from a tree index that
+     * matches accountNumber,so accounts are deterministically indexed in
+     * the tree and easier to find/handle.
+     */
+    typedAction.accountNumber.assertEquals(accountWitness.calculateIndex());
+
+    // Update current available accountNumber.
+    this.accountNumber.set(accountNumber.add(Field(1)));
 
     /* Update the merkle tree root, so it includes the new registered
      * account.
