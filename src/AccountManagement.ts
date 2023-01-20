@@ -92,6 +92,7 @@ export class AccountManagement extends SmartContract {
       accountNumber: Field(0),
       balance: initialBalance,
       actionOrigin: signUpMethodID,
+      provider: PublicKey.empty(),
     });
     this.reducer.dispatch(account);
   }
@@ -173,6 +174,7 @@ export class AccountManagement extends SmartContract {
       accountNumber: accountNumber,
       balance: action.balance,
       actionOrigin: action.actionOrigin,
+      provider: action.provider,
     });
 
     /* Check that the provided accountWitness comes from a tree index that
@@ -200,26 +202,33 @@ export class AccountManagement extends SmartContract {
   }
 
   @method releaseFundsRequest(
-    account: Account,
+    accountState: Account,
     accountWitness: AccountWitness,
-    to: PublicKey,
+    provider: PublicKey,
     amount: UInt64
   ) {
     // Validate that the account state is within our on-chain tree.
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
-    accountWitness.calculateRoot(account.hash()).assertEquals(accountsRoot);
+    accountsRoot.assertEquals(
+      accountWitness.calculateRoot(accountState.hash())
+    );
+    accountState.accountNumber.assertEquals(accountWitness.calculateIndex());
+
     // Make sure user has enough funds to release.
-    amount.assertLte(account.balance);
+    amount.assertLte(accountState.balance);
+
     // Require the signature of the user.
-    AccountUpdate.create(account.publicKey).requireSignature();
-    // Substract released amount from balance in a new instance
-    let newAccountState = new Account({
-      publicKey: account.publicKey,
-      accountNumber: account.accountNumber,
-      balance: account.balance.sub(amount),
-      actionOrigin: releaseFundsRequestMethodID,
-    });
+    AccountUpdate.create(accountState.publicKey).requireSignature();
+
+    /* Substract released amount from balance and assign proper
+     * actionOrigin in a new instance.
+     */
+    let newAccountState = new Account(accountState);
+    newAccountState.balance = accountState.balance.sub(amount);
+    newAccountState.actionOrigin = releaseFundsRequestMethodID;
+    newAccountState.provider = provider;
+
     // Dispatch the new state of the account.
     this.reducer.dispatch(newAccountState);
   }
@@ -266,6 +275,11 @@ export class AccountManagement extends SmartContract {
             action.actionOrigin,
             state.actionOrigin
           ),
+          provider: Circuit.if(
+            isCurrentAction,
+            action.provider,
+            state.provider
+          ),
         };
       },
       {
@@ -274,6 +288,7 @@ export class AccountManagement extends SmartContract {
           accountNumber: Field(0),
           balance: UInt64.from(0),
           actionOrigin: UInt32.from(0),
+          provider: PublicKey.empty(),
         },
         actionsHash: startOfActionsRange,
       }

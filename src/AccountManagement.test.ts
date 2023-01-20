@@ -53,12 +53,14 @@ describe('AccountManagement', () => {
       accountNumber: Field(1),
       balance: initialBalance,
       actionOrigin: UInt32.from(0),
+      provider: PublicKey.empty(),
     });
     user2AsAccount = new Account({
       publicKey: user2PrivateKey.toPublicKey(),
       accountNumber: Field(2),
       balance: initialBalance,
       actionOrigin: UInt32.from(0),
+      provider: PublicKey.empty(),
     });
     tree = new MerkleTree(21);
   });
@@ -377,27 +379,21 @@ describe('AccountManagement', () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
-    const range1 = getActionsRange();
-    for (let action of range1.actions) {
+    const range = getActionsRange();
+    for (let action of range.actions) {
       await processSignUpAction(action, tree);
     }
 
     await doSignUpTxn(user2PrivateKey);
     await doSetActionsRangeTxn();
-    const range2 = getActionsRange();
-    let accountState = new Account({
-      publicKey: range2.actions[0].publicKey,
-      accountNumber: zkApp.accountNumber.get(),
-      balance: range2.actions[0].balance,
-      actionOrigin: range2.actions[0].actionOrigin,
-    });
+    user1AsAccount.actionOrigin = signUpMethodID;
     const wrongTree = new MerkleTree(21);
     wrongTree.setLeaf(0n, Field(1));
     wrongTree.setLeaf(
-      accountState.accountNumber.toBigInt(),
-      accountState.hash()
+      user1AsAccount.accountNumber.toBigInt(),
+      user1AsAccount.hash()
     );
-    let aw = wrongTree.getWitness(accountState.accountNumber.toBigInt());
+    let aw = wrongTree.getWitness(user1AsAccount.accountNumber.toBigInt());
     let accountWitness = new AccountWitness(aw);
 
     expect(async () => {
@@ -484,6 +480,7 @@ describe('AccountManagement', () => {
         accountNumber: user1AsAccount.accountNumber,
         balance: initialBalance.sub(1_000_000_000),
         actionOrigin: releaseFundsRequestMethodID,
+        provider: newUserPublicKey,
       })
     );
 
@@ -493,6 +490,7 @@ describe('AccountManagement', () => {
         accountNumber: user2AsAccount.accountNumber,
         balance: initialBalance.sub(2_500_000_000),
         actionOrigin: releaseFundsRequestMethodID,
+        provider: newUserPublicKey,
       })
     );
   });

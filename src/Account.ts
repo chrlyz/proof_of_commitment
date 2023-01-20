@@ -19,6 +19,7 @@ export class Account extends Struct({
   accountNumber: Field,
   balance: UInt64,
   actionOrigin: UInt32,
+  provider: PublicKey,
 }) {
   hash(): Field {
     return Poseidon.hash(
@@ -27,6 +28,7 @@ export class Account extends Struct({
         .concat(this.accountNumber.toFields())
         .concat(this.balance.toFields())
         .concat(this.actionOrigin.toFields())
+        .concat(this.provider.toFields())
     );
   }
 }
