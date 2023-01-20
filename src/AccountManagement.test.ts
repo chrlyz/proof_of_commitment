@@ -69,9 +69,12 @@ describe('AccountManagement', () => {
   });
 
   afterAll(() => {
-    // `shutdown()` internally calls `process.exit()` which will exit the running Jest process early.
-    // Specifying a timeout of 0 is a workaround to defer `shutdown()` until Jest is done running all tests.
-    // This should be fixed with https://github.com/MinaProtocol/mina/issues/10943
+    /* `shutdown()` internally calls `process.exit()` which will exit the
+     * running Jest process early. Specifying a timeout of 0 is a workaround
+     * to defer `shutdown()` until Jest is done running all tests.
+     * This should be fixed with:
+     * https://github.com/MinaProtocol/mina/issues/10943
+     */
     setTimeout(shutdown, 0);
   });
 
@@ -90,14 +93,14 @@ describe('AccountManagement', () => {
   ) {
     for (let action of actions) {
       action.actionOrigin.assertEquals(signUpMethodID);
-      let typedAction = new Account({
+      let accountState = new Account({
         publicKey: action.publicKey,
         accountNumber: zkApp.accountNumber.get(),
         balance: action.balance,
         actionOrigin: action.actionOrigin,
       });
-      tree.setLeaf(typedAction.accountNumber.toBigInt(), typedAction.hash());
-      let aw = tree.getWitness(typedAction.accountNumber.toBigInt());
+      tree.setLeaf(accountState.accountNumber.toBigInt(), accountState.hash());
+      let aw = tree.getWitness(accountState.accountNumber.toBigInt());
       let accountWitness = new AccountWitness(aw);
 
       const txn = await Mina.transaction(deployerAccount, () => {
@@ -180,7 +183,7 @@ describe('AccountManagement', () => {
     return newUserPrivateKey;
   }
 
-  it('successfully deploys the `AccountManagement` smart contract', async () => {
+  it(`successfully deploys the AccountManagement smart contract`, async () => {
     await localDeploy();
 
     const startOfAllActions = zkApp.startOfAllActions.get();
@@ -200,7 +203,8 @@ describe('AccountManagement', () => {
     expect(accountsRoot).toEqual(root);
   });
 
-  it('emits proper sign-up request action when the `requestSignUp` method is executed', async () => {
+  it(`emits proper sign-up request action when the requestSignUp method
+  is executed`, async () => {
     await localDeploy();
 
     await doSignUpTxn(user1PrivateKey);
@@ -213,7 +217,8 @@ describe('AccountManagement', () => {
     expect(actions[0].actionOrigin).toEqual(UInt32.from(1));
   });
 
-  it('emits 2 proper sign-up request actions when the `requestSignUp` method is executed 2 times with different accounts', async () => {
+  it(`emits 2 proper sign-up request actions when the requestSignUp method is
+  executed 2 times with different accounts`, async () => {
     await localDeploy();
 
     await doSignUpTxn(user1PrivateKey);
@@ -231,7 +236,8 @@ describe('AccountManagement', () => {
     expect(actions[1].actionOrigin).toEqual(UInt32.from(1));
   });
 
-  it('throws an error when a `requestSignUp` transaction is not signed by the account requesting to sign-up', async () => {
+  it(`throws an error when a requestSignUp transaction is not signed by the
+  account requesting to sign-up`, async () => {
     await localDeploy();
 
     const txn = await Mina.transaction(user1PrivateKey, () => {
@@ -252,7 +258,8 @@ describe('AccountManagement', () => {
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(initialBalance));
   });
 
-  it('throws an error when `requestSignUp` is called with an account already requested to be signed-up', async () => {
+  it(`throws an error when requestSignUp is called with an account already
+  requested to be signed-up`, async () => {
     await localDeploy();
 
     await doSignUpTxn(user1PrivateKey);
@@ -262,8 +269,9 @@ describe('AccountManagement', () => {
     }).rejects.toThrowError('assert_equal: 1 != 0');
   });
 
-  test(`number of pending actions and the action hashes for the range remain unchanged when 'setRangeOfActionsToBeProcessed'
-        is executed when no actions have been emitted`, async () => {
+  test(`number of pending actions and the action hashes for the range remain
+  unchanged when setRangeOfActionsToBeProcessed is executed when no actions
+  have been emitted`, async () => {
     await localDeploy();
 
     const numberOfPendingActions = zkApp.numberOfPendingActions.get();
@@ -277,8 +285,9 @@ describe('AccountManagement', () => {
     expect(endOfActionsRange).toEqual(Reducer.initialActionsHash);
   });
 
-  test(`number of pending actions and the action hash for the end of the range get updated properly when
-        'setRangeOfActionsToBeProcessed' is executed when 2 actions have been emitted`, async () => {
+  test(`number of pending actions and the action hash for the end of the range
+  get updated properly when setRangeOfActionsToBeProcessed is executed when
+  2 actions have been emitted`, async () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSignUpTxn(user2PrivateKey);
@@ -294,7 +303,7 @@ describe('AccountManagement', () => {
     expect(range.actions.length).toEqual(expectedNumberOfPendingActions);
   });
 
-  test(`process 2 sign-up requests when executing 'processSignUpRequestAction'`, async () => {
+  test(`process 2 sign-up requests when executing processSignUpRequestAction`, async () => {
     await localDeploy();
 
     await doSignUpTxn(user1PrivateKey);
@@ -317,8 +326,9 @@ describe('AccountManagement', () => {
     expect(zkApp.actionTurn.get()).toEqual(Field(2));
   });
 
-  test(`process the only sign-up request when executing 'processSignUpRequestAction',
-        then emit a new one, set the range, and process it`, async () => {
+  test(`process the sign-up request when executing processSignUpRequestAction,
+  then a new one is emitted, the range is set, and the new one is processed by
+  processSignUpRequestAction again`, async () => {
     await localDeploy();
 
     await doSignUpTxn(user1PrivateKey);
@@ -354,8 +364,9 @@ describe('AccountManagement', () => {
     expect(zkApp.actionTurn.get()).toEqual(Field(1));
   });
 
-  test(`executing 'processSignUpRequestAction' by feeding it a witness from an account set in the merkle tree with an index
-        not corresponding to the account number should throw an error`, async () => {
+  test(`executing processSignUpRequestAction by feeding it a witness from an
+  account set in the merkle tree with an index not corresponding to the account
+  number should throw an error`, async () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
@@ -369,7 +380,8 @@ describe('AccountManagement', () => {
     }).rejects.toThrowError('assert_equal: 1 != 3');
   });
 
-  test(`Feeding the 'processSignUpRequestAction' with an invalid witness throws the expected error`, async () => {
+  test(`Feeding the 'processSignUpRequestAction' with an invalid witness throws
+  the expected error`, async () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
@@ -380,7 +392,7 @@ describe('AccountManagement', () => {
     await doSetActionsRangeTxn();
     const range2 = getActionsRange();
 
-    let typedAction = new Account({
+    let accountState = new Account({
       publicKey: range2.actions[0].publicKey,
       accountNumber: zkApp.accountNumber.get(),
       balance: range2.actions[0].balance,
@@ -389,8 +401,11 @@ describe('AccountManagement', () => {
 
     const wrongTree = new MerkleTree(21);
     wrongTree.setLeaf(0n, Field(1));
-    wrongTree.setLeaf(typedAction.accountNumber.toBigInt(), typedAction.hash());
-    let aw = wrongTree.getWitness(typedAction.accountNumber.toBigInt());
+    wrongTree.setLeaf(
+      accountState.accountNumber.toBigInt(),
+      accountState.hash()
+    );
+    let aw = wrongTree.getWitness(accountState.accountNumber.toBigInt());
     let accountWitness = new AccountWitness(aw);
 
     expect(async () => {
@@ -399,19 +414,19 @@ describe('AccountManagement', () => {
   });
 
   test(`Trying to process an action not emitted by requestSignUp, with
-        processSignUpRequestAction throws the expected error`, async () => {
+  processSignUpRequestAction throws the expected error`, async () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
     const range = getActionsRange();
-    let typedAction = new Account({
+    let accountState = new Account({
       publicKey: range.actions[0].publicKey,
       accountNumber: zkApp.accountNumber.get(),
       balance: range.actions[0].balance,
       actionOrigin: range.actions[0].actionOrigin,
     });
     const user1AccountNumberAsBI = zkApp.accountNumber.get().toBigInt();
-    tree.setLeaf(user1AccountNumberAsBI, typedAction.hash());
+    tree.setLeaf(user1AccountNumberAsBI, accountState.hash());
     const aw1 = tree.getWitness(user1AccountNumberAsBI);
     const accountWitness1 = new AccountWitness(aw1);
     const txn = await Mina.transaction(deployerAccount, () => {
@@ -423,7 +438,7 @@ describe('AccountManagement', () => {
     const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
     await doReleaseFundsRequestTxn(
       user1PrivateKey,
-      typedAction,
+      accountState,
       accountWitness1,
       newUserPrivateKey.toPublicKey(),
       1_000_000_000
@@ -438,8 +453,8 @@ describe('AccountManagement', () => {
     }).rejects.toThrowError('assert_equal: 2 != 1');
   });
 
-  test(`when 'releaseFundsRequest' is executed for 2 accounts already signed-up,
-        2 releaseFundsRequest actions are properly emitted`, async () => {
+  test(`when releaseFundsRequest is executed for 2 accounts already signed-up,
+  2 releaseFundsRequest actions are properly emitted`, async () => {
     await localDeploy();
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
@@ -448,8 +463,8 @@ describe('AccountManagement', () => {
     await doSignUpTxn(user2PrivateKey);
     await doSetActionsRangeTxn();
 
-    const range = getActionsRange();
-    await processSignUpActions(range.actions, tree);
+    const range1 = getActionsRange();
+    await processSignUpActions(range1.actions, tree);
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(
       UInt64.from(initialBalance).mul(2)
@@ -459,53 +474,51 @@ describe('AccountManagement', () => {
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
     user1AsAccount.actionOrigin = UInt32.from(1);
-    const user1W = tree.getWitness(1n);
-    const user1AccountWitness = new AccountWitness(user1W);
+    const aw1 = tree.getWitness(1n);
+    const accountWitness1 = new AccountWitness(aw1);
     await doReleaseFundsRequestTxn(
       user1PrivateKey,
       user1AsAccount,
-      user1AccountWitness,
+      accountWitness1,
       newUserPublicKey,
       1_000_000_000
     );
 
     user2AsAccount.actionOrigin = UInt32.from(1);
-    const user2W = tree.getWitness(2n);
-    const user2AccountWitness = new AccountWitness(user2W);
+    const aw2 = tree.getWitness(2n);
+    const accountWitness2 = new AccountWitness(aw2);
     await doReleaseFundsRequestTxn(
       user2PrivateKey,
       user2AsAccount,
-      user2AccountWitness,
+      accountWitness2,
       newUserPublicKey,
       2_500_000_000
     );
 
     await doSetActionsRangeTxn();
-    const newRange = getActionsRange();
+    const range2 = getActionsRange();
 
-    expect(newRange.actions[0].publicKey).toEqual(user1AsAccount.publicKey);
-    expect(newRange.actions[0].accountNumber).toEqual(
-      user1AsAccount.accountNumber
+    expect(range2.actions[0]).toEqual(
+      new Account({
+        publicKey: user1AsAccount.publicKey,
+        accountNumber: user1AsAccount.accountNumber,
+        balance: initialBalance.sub(1_000_000_000),
+        actionOrigin: releaseFundsRequestMethodID,
+      })
     );
-    expect(newRange.actions[0].balance).toEqual(
-      initialBalance.sub(1_000_000_000)
-    );
-    expect(newRange.actions[0].actionOrigin).toEqual(
-      releaseFundsRequestMethodID
-    );
-    expect(newRange.actions[1].publicKey).toEqual(user2AsAccount.publicKey);
-    expect(newRange.actions[1].accountNumber).toEqual(
-      user2AsAccount.accountNumber
-    );
-    expect(newRange.actions[1].balance).toEqual(
-      initialBalance.sub(2_500_000_000)
-    );
-    expect(newRange.actions[1].actionOrigin).toEqual(
-      releaseFundsRequestMethodID
+
+    expect(range2.actions[1]).toEqual(
+      new Account({
+        publicKey: user2AsAccount.publicKey,
+        accountNumber: user2AsAccount.accountNumber,
+        balance: initialBalance.sub(2_500_000_000),
+        actionOrigin: releaseFundsRequestMethodID,
+      })
     );
   });
 
-  test(`contract admin can't send funds from the contract by just signing transactions`, async () => {
+  test(`contract admin can't send funds from the contract by just signing
+  transactions`, async () => {
     await localDeploy();
 
     expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));

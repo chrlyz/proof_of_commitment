@@ -165,10 +165,10 @@ export class AccountManagement extends SmartContract {
     const accountNumber = this.accountNumber.get();
     this.accountNumber.assertEquals(accountNumber);
 
-    /* Convert action into its proper Account type, so its methods
-     * become available. And assign corresponding accountNumber.
+    /* Create a new instance of Account from the action being processed,
+     * with its corresponding accountNumber.
      */
-    let typedAction = new Account({
+    let accountState = new Account({
       publicKey: action.publicKey,
       accountNumber: accountNumber,
       balance: action.balance,
@@ -179,7 +179,7 @@ export class AccountManagement extends SmartContract {
      * matches accountNumber,so accounts are deterministically indexed in
      * the tree and easier to find/handle.
      */
-    typedAction.accountNumber.assertEquals(accountWitness.calculateIndex());
+    accountState.accountNumber.assertEquals(accountWitness.calculateIndex());
 
     // Update current available accountNumber.
     this.accountNumber.set(accountNumber.add(Field(1)));
@@ -187,7 +187,7 @@ export class AccountManagement extends SmartContract {
     /* Update the merkle tree root, so it includes the new registered
      * account.
      */
-    this.accountsRoot.set(accountWitness.calculateRoot(typedAction.hash()));
+    this.accountsRoot.set(accountWitness.calculateRoot(accountState.hash()));
 
     /* Advance to the turn of the next action to be processed, and decrease the
      * number of pending actions to account for the one we processed.
