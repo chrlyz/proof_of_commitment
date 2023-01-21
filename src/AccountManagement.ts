@@ -93,6 +93,7 @@ export class AccountManagement extends SmartContract {
       balance: initialBalance,
       actionOrigin: signUpMethodID,
       provider: PublicKey.empty(),
+      released: UInt64.from(0),
     });
     this.reducer.dispatch(account);
   }
@@ -148,38 +149,30 @@ export class AccountManagement extends SmartContract {
   }
 
   @method processSignUpRequestAction(accountWitness: AccountWitness) {
-    // Validate that the provided witness comes from the tree we committed to
+    /* Validate that the provided witness comes from the tree we are
+     * committed to on-chain.
+     */
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
-    accountWitness.calculateRoot(Field(0)).assertEquals(accountsRoot);
+    accountsRoot.assertEquals(accountWitness.calculateRoot(Field(0)));
 
-    /* Get the action to be processed and associated data with this operation.
+    /* Get the action to be processed, and associated data with this operation.
      * Then check that the action was emitted by the corresponding method.
      */
     const actionWithMetadata = this.getCurrentAction();
     const action = actionWithMetadata.action;
     action.actionOrigin.assertEquals(signUpMethodID);
 
-    /* Get the current available account number to assign to
-     * the user.
-     */
+    // Get the current available accountNumber to assign to the user.
     const accountNumber = this.accountNumber.get();
     this.accountNumber.assertEquals(accountNumber);
 
-    /* Create a new instance of Account from the action being processed,
-     * with its corresponding accountNumber.
-     */
-    let accountState = new Account({
-      publicKey: action.publicKey,
-      accountNumber: accountNumber,
-      balance: action.balance,
-      actionOrigin: action.actionOrigin,
-      provider: action.provider,
-    });
+    // Assign accountNumber.
+    let accountState = new Account(action);
+    accountState.accountNumber = accountNumber;
 
-    /* Check that the provided accountWitness comes from a tree index that
-     * matches accountNumber,so accounts are deterministically indexed in
-     * the tree and easier to find/handle.
+    /* Check that the provided accountWitness comes from the right tree index,
+     * which should correspond to the assigned accountNumber.
      */
     accountState.accountNumber.assertEquals(accountWitness.calculateIndex());
 
@@ -213,6 +206,8 @@ export class AccountManagement extends SmartContract {
     accountsRoot.assertEquals(
       accountWitness.calculateRoot(accountState.hash())
     );
+
+    // Check that the provided accountWitness comes from the right tree index.
     accountState.accountNumber.assertEquals(accountWitness.calculateIndex());
 
     // Make sure user has enough funds to release.
@@ -221,16 +216,61 @@ export class AccountManagement extends SmartContract {
     // Require the signature of the user.
     AccountUpdate.create(accountState.publicKey).requireSignature();
 
-    /* Substract released amount from balance and assign proper
-     * actionOrigin in a new instance.
+    /* Assign proper actionOrigin in a new account state, the service
+     * provider, and the amount of funds to be released.
      */
     let newAccountState = new Account(accountState);
-    newAccountState.balance = accountState.balance.sub(amount);
     newAccountState.actionOrigin = releaseFundsRequestMethodID;
     newAccountState.provider = provider;
+    newAccountState.released = amount;
 
     // Dispatch the new state of the account.
     this.reducer.dispatch(newAccountState);
+  }
+
+  @method processReleaseFundsRequest(
+    accountState: Account,
+    accountWitness: AccountWitness
+  ) {
+    /* Validate that the provided witness comes from the tree we are
+     * committed to on-chain.
+     */
+    const accountsRoot = this.accountsRoot.get();
+    this.accountsRoot.assertEquals(accountsRoot);
+    accountsRoot.assertEquals(
+      accountWitness.calculateRoot(accountState.hash())
+    );
+
+    // Check that the provided accountWitness comes from the right tree index.
+    accountState.accountNumber.assertEquals(accountWitness.calculateIndex());
+
+    /* Get the action to be processed, and associated data with this operation.
+     * Then check that the action was emitted by the corresponding method.
+     */
+    const actionWithMetadata = this.getCurrentAction();
+    const action = actionWithMetadata.action;
+    action.actionOrigin.assertEquals(releaseFundsRequestMethodID);
+
+    this.send({ to: action.provider, amount: action.released });
+
+    /* Assign new balance after substracting the released amount, and reset
+     * released amount.
+     */
+    let newAccountState = new Account(action);
+    newAccountState.balance = action.balance.sub(action.released);
+    newAccountState.released = UInt64.from(0);
+
+    // Update the merkle tree root with the new account state.
+    this.accountsRoot.set(accountWitness.calculateRoot(newAccountState.hash()));
+
+    /* Advance to the turn of the next action to be processed, and decrease the
+     * number of pending actions to account for the one we processed.
+     */
+    this.actionTurn.set(actionWithMetadata.actionTurn.add(1));
+
+    const numberOfPendingActions = this.numberOfPendingActions.get();
+    this.numberOfPendingActions.assertEquals(numberOfPendingActions);
+    this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
   }
 
   getCurrentAction() {
@@ -280,6 +320,11 @@ export class AccountManagement extends SmartContract {
             action.provider,
             state.provider
           ),
+          released: Circuit.if(
+            isCurrentAction,
+            action.released,
+            state.released
+          ),
         };
       },
       {
@@ -289,6 +334,7 @@ export class AccountManagement extends SmartContract {
           balance: UInt64.from(0),
           actionOrigin: UInt32.from(0),
           provider: PublicKey.empty(),
+          released: UInt64.from(0),
         },
         actionsHash: startOfActionsRange,
       }
