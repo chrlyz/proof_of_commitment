@@ -495,6 +495,39 @@ describe('AccountManagement', () => {
     );
   });
 
+  test(`if releaser doesn't signs a releaseFunds transaction it fails`, async () => {
+    await localDeploy();
+
+    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
+
+    await doSignUpTxn(user1PrivateKey);
+    await doSetActionsRangeTxn();
+    const range = getActionsRange();
+    await processSignUpAction(range.actions[0], tree);
+
+    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(initialBalance));
+
+    const newUserPrivateKey = await createNewMinaAccount(deployerAccount, 1);
+    const newUserPublicKey = newUserPrivateKey.toPublicKey();
+
+    user1AsAccount.actionOrigin = UInt32.from(1);
+    const aw = tree.getWitness(1n);
+    const accountWitness = new AccountWitness(aw);
+    const txn = await Mina.transaction(user1PrivateKey, () => {
+      zkApp.releaseFundsRequest(
+        user1AsAccount,
+        accountWitness,
+        newUserPublicKey,
+        UInt64.from(4_000_000_000)
+      );
+    });
+    await txn.prove();
+
+    expect(async () => {
+      await txn.send();
+    }).rejects.toThrowError('private key is missing');
+  });
+
   test(`contract admin can't send funds from the contract by just signing
   transactions`, async () => {
     await localDeploy();
