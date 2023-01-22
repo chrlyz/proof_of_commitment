@@ -5,14 +5,10 @@ import {
   PublicKey,
   Struct,
   UInt64,
-  MerkleWitness,
   UInt32,
 } from 'snarkyjs';
 
 await isReady;
-
-export const initialBalance = UInt64.from(5_000_000_000);
-export class AccountWitness extends MerkleWitness(21) {}
 
 export class Account extends Struct({
   publicKey: PublicKey,

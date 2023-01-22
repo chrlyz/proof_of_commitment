@@ -15,16 +15,19 @@ import {
   UInt64,
   UInt32,
   MerkleTree,
+  MerkleWitness,
 } from 'snarkyjs';
 
-import { Account, AccountWitness, initialBalance } from './Account.js';
+import { Account } from './Account.js';
 
 await isReady;
 
+export const initialBalance = UInt64.from(5_000_000_000);
 export const signUpMethodID = UInt32.from(1);
 export const releaseFundsRequestMethodID = UInt32.from(2);
 const tree = new MerkleTree(21);
 export const root = tree.getRoot();
+export class AccountWitness extends MerkleWitness(21) {}
 
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });

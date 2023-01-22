@@ -12,12 +12,14 @@ import {
   UInt32,
 } from 'snarkyjs';
 
-import { Account, AccountWitness, initialBalance } from './Account.js';
+import { Account } from './Account.js';
 
 import {
   AccountManagement,
-  signUpMethodID,
+  AccountWitness,
   root,
+  initialBalance,
+  signUpMethodID,
   releaseFundsRequestMethodID,
 } from './AccountManagement.js';
 
