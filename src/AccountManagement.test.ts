@@ -341,16 +341,14 @@ describe('AccountManagement', () => {
     expect(zkApp.actionTurn.get()).toEqual(Field(2));
   });
 
-  test(`process the sign-up request when executing processSignUpRequestAction,
-  then a new one is emitted, the range is set, and the new one is processed by
-  processSignUpRequestAction again`, async () => {
+  test(`processSignUpRequestAction processes a sign-up request emitted after it
+  processed another`, async () => {
     await localDeploy();
 
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
 
     user1AsAccount.actionOrigin = signUpMethodID;
-
     let expectedTree = new MerkleTree(21);
     expectedTree.setLeaf(1n, user1AsAccount.hash());
     const expectedTreeRoot1 = expectedTree.getRoot();
@@ -368,7 +366,6 @@ describe('AccountManagement', () => {
     await doSetActionsRangeTxn();
 
     user2AsAccount.actionOrigin = signUpMethodID;
-
     expectedTree.setLeaf(2n, user2AsAccount.hash());
     const expectedTreeRoot2 = expectedTree.getRoot();
 
@@ -496,22 +493,17 @@ describe('AccountManagement', () => {
 
   test(`if releaser doesn't signs a releaseFunds transaction it fails`, async () => {
     await localDeploy();
-
-    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
-
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
     const range = getActionsRange();
     await processSignUpAction(range.actions[0]);
 
-    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(initialBalance));
-
     const newUserPrivateKey = await createNewMinaAccount(deployerPrivateKey, 1);
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
-
     user1AsAccount.actionOrigin = signUpMethodID;
     const aw = tree.getWitness(1n);
     const accountWitness = new AccountWitness(aw);
+
     const txn = await Mina.transaction(user1PublicKey, () => {
       zkApp.releaseFundsRequest(
         user1AsAccount,
@@ -625,5 +617,114 @@ describe('AccountManagement', () => {
     expect(Mina.getBalance(newUserPublicKey)).toEqual(
       UInt64.from(1).add(1_000_000_000).add(2_500_000_000)
     );
+  });
+
+  test(`releaseFundsRequest doesn't allow a user to request releasing more
+  balance than they have`, async () => {
+    await localDeploy();
+    await doSignUpTxn(user1PrivateKey);
+    await doSetActionsRangeTxn();
+    const range = getActionsRange();
+    await processSignUpAction(range.actions[0]);
+
+    const newUserPrivateKey = await createNewMinaAccount(deployerPrivateKey, 1);
+    const newUserPublicKey = newUserPrivateKey.toPublicKey();
+    user1AsAccount.actionOrigin = signUpMethodID;
+    const aw = tree.getWitness(1n);
+    const accountWitness = new AccountWitness(aw);
+
+    expect(async () => {
+      await doReleaseFundsRequestTxn(
+        user1PrivateKey,
+        user1AsAccount,
+        accountWitness,
+        newUserPublicKey,
+        6_666_666_666
+      );
+    }).rejects.toThrowError(/Expected [0-9]+ to fit in 64 bits/);
+  });
+
+  test(`processReleaseFundsRequest processes a release funds request emitted
+  after it processed another`, async () => {
+    await localDeploy();
+
+    expect(Mina.getBalance(zkAppAddress)).toEqual(UInt64.from(0));
+
+    await doSignUpTxn(user1PrivateKey);
+    await doSignUpTxn(user2PrivateKey);
+    await doSetActionsRangeTxn();
+    const range1 = getActionsRange();
+    for (let action of range1.actions) {
+      await processSignUpAction(action);
+    }
+
+    expect(Mina.getBalance(zkAppAddress)).toEqual(
+      UInt64.from(initialBalance).mul(2)
+    );
+
+    const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
+    const newUserPublicKey = newUserPrivateKey.toPublicKey();
+
+    user1AsAccount.actionOrigin = signUpMethodID;
+    const aw1 = tree.getWitness(1n);
+    const accountWitness1 = new AccountWitness(aw1);
+    await doReleaseFundsRequestTxn(
+      user1PrivateKey,
+      user1AsAccount,
+      accountWitness1,
+      newUserPublicKey,
+      3_333_333_333
+    );
+
+    await doSetActionsRangeTxn();
+    const range2 = getActionsRange();
+    await processReleaseFundsAction(range2.actions[0], user1AsAccount);
+
+    expect(Mina.getBalance(zkAppAddress)).toEqual(
+      UInt64.from(initialBalance).mul(2).sub(3_333_333_333)
+    );
+    expect(Mina.getBalance(newUserPublicKey)).toEqual(
+      UInt64.from(1).add(3_333_333_333)
+    );
+
+    user2AsAccount.actionOrigin = signUpMethodID;
+    const aw2 = tree.getWitness(2n);
+    const accountWitness2 = new AccountWitness(aw2);
+    await doReleaseFundsRequestTxn(
+      user2PrivateKey,
+      user2AsAccount,
+      accountWitness2,
+      newUserPublicKey,
+      1_111_111_111
+    );
+
+    await doSetActionsRangeTxn();
+    const range3 = getActionsRange();
+    await processReleaseFundsAction(range3.actions[0], user2AsAccount);
+
+    expect(Mina.getBalance(zkAppAddress)).toEqual(
+      UInt64.from(initialBalance).mul(2).sub(3_333_333_333).sub(1_111_111_111)
+    );
+    expect(Mina.getBalance(newUserPublicKey)).toEqual(
+      UInt64.from(1).add(3_333_333_333).add(1_111_111_111)
+    );
+  });
+
+  test(`Trying to process an action not emitted by releaseFundsRequest, with
+  processReleaseFundsRequest throws the expected error`, async () => {
+    await localDeploy();
+    await doSignUpTxn(user1PrivateKey);
+    await doSetActionsRangeTxn();
+    const range1 = getActionsRange();
+    await processSignUpAction(range1.actions[0]);
+
+    await doSignUpTxn(user2PrivateKey);
+    await doSetActionsRangeTxn();
+    user1AsAccount.actionOrigin = signUpMethodID;
+    const range2 = getActionsRange();
+
+    expect(async () => {
+      await processReleaseFundsAction(range2.actions[0], user1AsAccount);
+    }).rejects.toThrowError('assert_equal: 1 != 2');
   });
 });
