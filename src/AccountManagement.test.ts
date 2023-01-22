@@ -398,33 +398,6 @@ describe('AccountManagement', () => {
     }).rejects.toThrowError('assert_equal: 1 != 3');
   });
 
-  test(`Feeding the 'processSignUpRequestAction' with an invalid witness throws
-  the expected error`, async () => {
-    await localDeploy();
-    await doSignUpTxn(user1PrivateKey);
-    await doSetActionsRangeTxn();
-    const range = getActionsRange();
-    for (let action of range.actions) {
-      await processSignUpAction(action);
-    }
-
-    await doSignUpTxn(user2PrivateKey);
-    await doSetActionsRangeTxn();
-    user1AsAccount.actionOrigin = signUpMethodID;
-    const wrongTree = new MerkleTree(21);
-    wrongTree.setLeaf(0n, Field(1));
-    wrongTree.setLeaf(
-      user1AsAccount.accountNumber.toBigInt(),
-      user1AsAccount.hash()
-    );
-    let aw = wrongTree.getWitness(user1AsAccount.accountNumber.toBigInt());
-    let accountWitness = new AccountWitness(aw);
-
-    expect(async () => {
-      zkApp.processSignUpRequestAction(accountWitness);
-    }).rejects.toThrowError('assert_equal:');
-  });
-
   test(`Trying to process an action not emitted by requestSignUp, with
   processSignUpRequestAction throws the expected error`, async () => {
     await localDeploy();

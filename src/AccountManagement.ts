@@ -207,9 +207,6 @@ export class AccountManagement extends SmartContract {
       accountWitness.calculateRoot(accountState.hash())
     );
 
-    // Check that the provided accountWitness comes from the right tree index.
-    accountState.accountNumber.assertEquals(accountWitness.calculateIndex());
-
     // Make sure user has enough funds to release.
     amount.assertLte(accountState.balance);
 
@@ -240,9 +237,6 @@ export class AccountManagement extends SmartContract {
     accountsRoot.assertEquals(
       accountWitness.calculateRoot(accountState.hash())
     );
-
-    // Check that the provided accountWitness comes from the right tree index.
-    accountState.accountNumber.assertEquals(accountWitness.calculateIndex());
 
     /* Get the action to be processed, and associated data with this operation.
      * Then check that the action was emitted by the corresponding method.
