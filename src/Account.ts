@@ -1,14 +1,4 @@
-import {
-  Field,
-  isReady,
-  Poseidon,
-  PublicKey,
-  Struct,
-  UInt64,
-  UInt32,
-} from 'snarkyjs';
-
-await isReady;
+import { Field, Poseidon, PublicKey, Struct, UInt64, UInt32 } from 'snarkyjs';
 
 export class Account extends Struct({
   publicKey: PublicKey,

@@ -152,14 +152,14 @@ describe('AccountManagement', () => {
     releaserAccount: Account,
     accountWitness: AccountWitness,
     receiver: PublicKey,
-    amount: number
+    amount: UInt64
   ) {
     const txn = await Mina.transaction(releaser.toPublicKey(), () => {
       zkApp.releaseFundsRequest(
         releaserAccount,
         accountWitness,
         receiver,
-        UInt64.from(amount)
+        amount
       );
     });
     await txn.prove();
@@ -412,7 +412,7 @@ describe('AccountManagement', () => {
       actionWithAccountNumber,
       accountWitness,
       newUserPrivateKey.toPublicKey(),
-      1_000_000_000
+      UInt64.from(1_000_000_000)
     );
     await doSetActionsRangeTxn();
 
@@ -453,7 +453,7 @@ describe('AccountManagement', () => {
       user1AsAccount,
       accountWitness1,
       newUserPublicKey,
-      1_000_000_000
+      UInt64.from(1_000_000_000)
     );
 
     user2AsAccount.actionOrigin = signUpMethodID;
@@ -464,7 +464,7 @@ describe('AccountManagement', () => {
       user2AsAccount,
       accountWitness2,
       newUserPublicKey,
-      2_500_000_000
+      UInt64.from(2_500_000_000)
     );
 
     await doSetActionsRangeTxn();
@@ -594,7 +594,7 @@ describe('AccountManagement', () => {
       user1AsAccount,
       accountWitness1,
       newUserPublicKey,
-      1_000_000_000
+      UInt64.from(1_000_000_000)
     );
 
     user2AsAccount.actionOrigin = signUpMethodID;
@@ -605,7 +605,7 @@ describe('AccountManagement', () => {
       user2AsAccount,
       accountWitness2,
       newUserPublicKey,
-      2_500_000_000
+      UInt64.from(2_500_000_000)
     );
 
     await doSetActionsRangeTxn();
@@ -641,7 +641,7 @@ describe('AccountManagement', () => {
         user1AsAccount,
         accountWitness,
         newUserPublicKey,
-        6_666_666_666
+        UInt64.from(6_666_666_666)
       );
     }).rejects.toThrowError(/Expected [0-9]+ to fit in 64 bits/);
   });
@@ -675,7 +675,7 @@ describe('AccountManagement', () => {
       user1AsAccount,
       accountWitness1,
       newUserPublicKey,
-      3_333_333_333
+      UInt64.from(3_333_333_333)
     );
 
     await doSetActionsRangeTxn();
@@ -697,7 +697,7 @@ describe('AccountManagement', () => {
       user2AsAccount,
       accountWitness2,
       newUserPublicKey,
-      1_111_111_111
+      UInt64.from(1_111_111_111)
     );
 
     await doSetActionsRangeTxn();
