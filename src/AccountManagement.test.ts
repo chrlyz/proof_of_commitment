@@ -226,7 +226,7 @@ describe('AccountManagement', () => {
     expect(actions[0].publicKey).toEqual(user1PublicKey);
     expect(actions[0].accountNumber).toEqual(Field(0));
     expect(actions[0].balance).toEqual(initialBalance);
-    expect(actions[0].actionOrigin).toEqual(UInt32.from(1));
+    expect(actions[0].actionOrigin).toEqual(signUpMethodID);
   });
 
   it(`emits 2 proper sign-up request actions when the requestSignUp method is
@@ -241,11 +241,11 @@ describe('AccountManagement', () => {
     expect(actions[0].publicKey).toEqual(user1PublicKey);
     expect(actions[0].accountNumber).toEqual(Field(0));
     expect(actions[0].balance).toEqual(initialBalance);
-    expect(actions[0].actionOrigin).toEqual(UInt32.from(1));
+    expect(actions[0].actionOrigin).toEqual(signUpMethodID);
     expect(actions[1].publicKey).toEqual(user2PublicKey);
     expect(actions[1].accountNumber).toEqual(Field(0));
     expect(actions[1].balance).toEqual(initialBalance);
-    expect(actions[1].actionOrigin).toEqual(UInt32.from(1));
+    expect(actions[1].actionOrigin).toEqual(signUpMethodID);
   });
 
   it(`throws an error when a requestSignUp transaction is not signed by the
@@ -473,7 +473,7 @@ describe('AccountManagement', () => {
     const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
-    user1AsAccount.actionOrigin = UInt32.from(1);
+    user1AsAccount.actionOrigin = signUpMethodID;
     const aw1 = tree.getWitness(1n);
     const accountWitness1 = new AccountWitness(aw1);
     await doReleaseFundsRequestTxn(
@@ -484,7 +484,7 @@ describe('AccountManagement', () => {
       1_000_000_000
     );
 
-    user2AsAccount.actionOrigin = UInt32.from(1);
+    user2AsAccount.actionOrigin = signUpMethodID;
     const aw2 = tree.getWitness(2n);
     const accountWitness2 = new AccountWitness(aw2);
     await doReleaseFundsRequestTxn(
@@ -536,7 +536,7 @@ describe('AccountManagement', () => {
     const newUserPrivateKey = await createNewMinaAccount(deployerPrivateKey, 1);
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
-    user1AsAccount.actionOrigin = UInt32.from(1);
+    user1AsAccount.actionOrigin = signUpMethodID;
     const aw = tree.getWitness(1n);
     const accountWitness = new AccountWitness(aw);
     const txn = await Mina.transaction(user1PublicKey, () => {
@@ -619,7 +619,7 @@ describe('AccountManagement', () => {
     const newUserPrivateKey = await createNewMinaAccount(user1PrivateKey, 1);
     const newUserPublicKey = newUserPrivateKey.toPublicKey();
 
-    user1AsAccount.actionOrigin = UInt32.from(1);
+    user1AsAccount.actionOrigin = signUpMethodID;
     const aw1 = tree.getWitness(1n);
     const accountWitness1 = new AccountWitness(aw1);
     await doReleaseFundsRequestTxn(
@@ -630,7 +630,7 @@ describe('AccountManagement', () => {
       1_000_000_000
     );
 
-    user2AsAccount.actionOrigin = UInt32.from(1);
+    user2AsAccount.actionOrigin = signUpMethodID;
     const aw2 = tree.getWitness(2n);
     const accountWitness2 = new AccountWitness(aw2);
     await doReleaseFundsRequestTxn(
