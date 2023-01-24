@@ -5,7 +5,6 @@ export class Account extends Struct({
   accountNumber: Field,
   balance: UInt64,
   actionOrigin: UInt32,
-  provider: PublicKey,
   released: UInt64,
 }) {
   hash(): Field {
@@ -15,7 +14,6 @@ export class Account extends Struct({
         .concat(this.accountNumber.toFields())
         .concat(this.balance.toFields())
         .concat(this.actionOrigin.toFields())
-        .concat(this.provider.toFields())
         .concat(this.released.toFields())
     );
   }

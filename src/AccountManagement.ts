@@ -16,6 +16,7 @@ import {
   UInt32,
   MerkleTree,
   MerkleWitness,
+  PrivateKey,
 } from 'snarkyjs';
 
 import { Account } from './Account.js';
@@ -25,9 +26,15 @@ await isReady;
 export const initialBalance = UInt64.from(5_000_000_000);
 export const signUpMethodID = UInt32.from(1);
 export const releaseFundsRequestMethodID = UInt32.from(2);
+export const addFundsRequestMethodID = UInt32.from(3);
 const tree = new MerkleTree(21);
 export const root = tree.getRoot();
 export class AccountWitness extends MerkleWitness(21) {}
+/* When deploying the contract, replace serviceProviderAddress with the address
+ * of a key you control.
+ */
+export const serviceProviderKey = PrivateKey.random();
+export const serviceProviderAddress = serviceProviderKey.toPublicKey();
 
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });
@@ -56,16 +63,13 @@ export class AccountManagement extends SmartContract {
   }
 
   @method requestSignUp(publicKey: PublicKey) {
-    /* Require signature of the account requesting signing-up,
-     * so only the user themselves can request to sign-up. User
-     * also sends 5 MINA to be able to start using the service
+    /* User sends 5 MINA to be able to start using the service
      * immediately after signing-up (This allows sevice providers
      * to see that the user has funds, so they have the
      * incentive to serve the user).
      */
 
     let accountUpdate = AccountUpdate.create(publicKey);
-    accountUpdate.requireSignature();
     accountUpdate.send({ to: this.address, amount: initialBalance });
 
     /* Check all actions to see if the public key isn't
@@ -95,7 +99,6 @@ export class AccountManagement extends SmartContract {
       accountNumber: Field(0),
       balance: initialBalance,
       actionOrigin: signUpMethodID,
-      provider: PublicKey.empty(),
       released: UInt64.from(0),
     });
     this.reducer.dispatch(account);
@@ -200,7 +203,6 @@ export class AccountManagement extends SmartContract {
   @method releaseFundsRequest(
     accountState: Account,
     accountWitness: AccountWitness,
-    provider: PublicKey,
     amount: UInt64
   ) {
     // Validate that the account state is within our on-chain tree.
@@ -216,12 +218,11 @@ export class AccountManagement extends SmartContract {
     // Require the signature of the user.
     AccountUpdate.create(accountState.publicKey).requireSignature();
 
-    /* Assign proper actionOrigin in a new account state, the service
-     * provider, and the amount of funds to be released.
+    /* Assign proper actionOrigin in a new account state, and the amount of
+     * funds to be released.
      */
     let newAccountState = new Account(accountState);
     newAccountState.actionOrigin = releaseFundsRequestMethodID;
-    newAccountState.provider = provider;
     newAccountState.released = amount;
 
     // Dispatch the new state of the account.
@@ -248,7 +249,8 @@ export class AccountManagement extends SmartContract {
     const action = actionWithMetadata.action;
     action.actionOrigin.assertEquals(releaseFundsRequestMethodID);
 
-    this.send({ to: action.provider, amount: action.released });
+    // Send the released funds to service provider.
+    this.send({ to: serviceProviderAddress, amount: action.released });
 
     /* Assign new balance after substracting the released amount, and reset
      * released amount.
@@ -256,6 +258,71 @@ export class AccountManagement extends SmartContract {
     let newAccountState = new Account(action);
     newAccountState.balance = action.balance.sub(action.released);
     newAccountState.released = UInt64.from(0);
+
+    // Update the merkle tree root with the new account state.
+    this.accountsRoot.set(accountWitness.calculateRoot(newAccountState.hash()));
+
+    /* Advance to the turn of the next action to be processed, and decrease the
+     * number of pending actions to account for the one we processed.
+     */
+    this.actionTurn.set(actionWithMetadata.actionTurn.add(1));
+
+    const numberOfPendingActions = this.numberOfPendingActions.get();
+    this.numberOfPendingActions.assertEquals(numberOfPendingActions);
+    this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
+  }
+
+  @method addFundsRequest(
+    accountState: Account,
+    accountWitness: AccountWitness,
+    amount: UInt64
+  ) {
+    // Validate that the account state is within our on-chain tree.
+    const accountsRoot = this.accountsRoot.get();
+    this.accountsRoot.assertEquals(accountsRoot);
+    accountsRoot.assertEquals(
+      accountWitness.calculateRoot(accountState.hash())
+    );
+
+    // Require the signature of the user.
+    let accountUpdate = AccountUpdate.create(accountState.publicKey);
+    accountUpdate.send({ to: this.address, amount: amount });
+
+    /* Assign proper actionOrigin in a new account state, and the new balance
+     * after adding the funds.
+     */
+    let newAccountState = new Account(accountState);
+    newAccountState.actionOrigin = addFundsRequestMethodID;
+    newAccountState.balance = accountState.balance.add(amount);
+
+    // Dispatch the new state of the account.
+    this.reducer.dispatch(newAccountState);
+  }
+
+  @method processAddFundsRequest(
+    accountState: Account,
+    accountWitness: AccountWitness
+  ) {
+    /* Validate that the provided witness comes from the tree we are
+     * committed to on-chain.
+     */
+    const accountsRoot = this.accountsRoot.get();
+    this.accountsRoot.assertEquals(accountsRoot);
+    accountsRoot.assertEquals(
+      accountWitness.calculateRoot(accountState.hash())
+    );
+
+    /* Get the action to be processed, and associated data with this operation.
+     * Then check that the action was emitted by the corresponding method.
+     */
+    const actionWithMetadata = this.getCurrentAction();
+    const action = actionWithMetadata.action;
+    action.actionOrigin.assertEquals(addFundsRequestMethodID);
+
+    /* Assign new balance after substracting the released amount, and reset
+     * released amount.
+     */
+    let newAccountState = new Account(action);
 
     // Update the merkle tree root with the new account state.
     this.accountsRoot.set(accountWitness.calculateRoot(newAccountState.hash()));
@@ -312,11 +379,6 @@ export class AccountManagement extends SmartContract {
             action.actionOrigin,
             state.actionOrigin
           ),
-          provider: Circuit.if(
-            isCurrentAction,
-            action.provider,
-            state.provider
-          ),
           released: Circuit.if(
             isCurrentAction,
             action.released,
@@ -330,7 +392,6 @@ export class AccountManagement extends SmartContract {
           accountNumber: Field(0),
           balance: UInt64.from(0),
           actionOrigin: UInt32.from(0),
-          provider: PublicKey.empty(),
           released: UInt64.from(0),
         },
         actionsHash: startOfActionsRange,
