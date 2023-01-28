@@ -2,7 +2,6 @@ import { Field, Poseidon, PublicKey, Struct, UInt64, UInt32 } from 'snarkyjs';
 
 export class Account extends Struct({
   publicKey: PublicKey,
-  accountNumber: Field,
   balance: UInt64,
   actionOrigin: UInt32,
   released: UInt64,
@@ -11,7 +10,6 @@ export class Account extends Struct({
     return Poseidon.hash(
       this.publicKey
         .toFields()
-        .concat(this.accountNumber.toFields())
         .concat(this.balance.toFields())
         .concat(this.actionOrigin.toFields())
         .concat(this.released.toFields())

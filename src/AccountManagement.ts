@@ -14,9 +14,8 @@ import {
   Circuit,
   UInt64,
   UInt32,
-  MerkleTree,
-  MerkleWitness,
-  PrivateKey,
+  MerkleMap,
+  MerkleMapWitness,
 } from 'snarkyjs';
 
 import { Account } from './Account.js';
@@ -27,20 +26,20 @@ export const initialBalance = UInt64.from(5_000_000_000);
 export const signUpMethodID = UInt32.from(1);
 export const releaseFundsRequestMethodID = UInt32.from(2);
 export const addFundsRequestMethodID = UInt32.from(3);
-const tree = new MerkleTree(21);
+const tree = new MerkleMap();
 export const root = tree.getRoot();
-export class AccountWitness extends MerkleWitness(21) {}
+
 /* When deploying the contract, replace serviceProviderAddress with the address
  * of a key you control.
  */
-export const serviceProviderKey = PrivateKey.random();
-export const serviceProviderAddress = serviceProviderKey.toPublicKey();
+export const serviceProviderAddress = PublicKey.fromBase58(
+  'B62qjA4aVsTqjAEmZHrDRUfWgQSYY2Ww6jzfog3YezpNDDG3VAVsArH'
+);
 
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });
 
   @state(Field) startOfAllActions = State<Field>();
-  @state(Field) accountNumber = State<Field>();
   @state(Field) numberOfPendingActions = State<Field>();
   @state(Field) actionTurn = State<Field>();
   @state(Field) startOfActionsRange = State<Field>();
@@ -54,7 +53,6 @@ export class AccountManagement extends SmartContract {
       send: Permissions.proof(),
     });
     this.startOfAllActions.set(Reducer.initialActionsHash);
-    this.accountNumber.set(Field(1));
     this.numberOfPendingActions.set(Field(0));
     this.actionTurn.set(Field(0));
     this.startOfActionsRange.set(Reducer.initialActionsHash);
@@ -96,7 +94,6 @@ export class AccountManagement extends SmartContract {
 
     let account = new Account({
       publicKey: publicKey,
-      accountNumber: Field(0),
       balance: initialBalance,
       actionOrigin: signUpMethodID,
       released: UInt64.from(0),
@@ -154,13 +151,13 @@ export class AccountManagement extends SmartContract {
     this.endOfActionsRange.set(newEndOfActionsRange);
   }
 
-  @method processSignUpRequestAction(accountWitness: AccountWitness) {
+  @method processSignUpRequestAction(accountWitness: MerkleMapWitness) {
     /* Validate that the provided witness comes from the tree we are
      * committed to on-chain.
      */
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
-    accountsRoot.assertEquals(accountWitness.calculateRoot(Field(0)));
+    accountsRoot.assertEquals(accountWitness.computeRootAndKey(Field(0))[0]);
 
     /* Get the action to be processed, and associated data with this operation.
      * Then check that the action was emitted by the corresponding method.
@@ -169,26 +166,15 @@ export class AccountManagement extends SmartContract {
     const action = actionWithMetadata.action;
     action.actionOrigin.assertEquals(signUpMethodID);
 
-    // Get the current available accountNumber to assign to the user.
-    const accountNumber = this.accountNumber.get();
-    this.accountNumber.assertEquals(accountNumber);
-
-    // Assign accountNumber.
+    // Type accountState as Account.
     let accountState = new Account(action);
-    accountState.accountNumber = accountNumber;
-
-    /* Check that the provided accountWitness comes from the right tree index,
-     * which should correspond to the assigned accountNumber.
-     */
-    accountState.accountNumber.assertEquals(accountWitness.calculateIndex());
-
-    // Update current available accountNumber.
-    this.accountNumber.set(accountNumber.add(Field(1)));
 
     /* Update the merkle tree root, so it includes the new registered
      * account.
      */
-    this.accountsRoot.set(accountWitness.calculateRoot(accountState.hash()));
+    this.accountsRoot.set(
+      accountWitness.computeRootAndKey(accountState.hash())[0]
+    );
 
     /* Advance to the turn of the next action to be processed, and decrease the
      * number of pending actions to account for the one we processed.
@@ -202,14 +188,14 @@ export class AccountManagement extends SmartContract {
 
   @method releaseFundsRequest(
     accountState: Account,
-    accountWitness: AccountWitness,
+    accountWitness: MerkleMapWitness,
     amount: UInt64
   ) {
     // Validate that the account state is within our on-chain tree.
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
     accountsRoot.assertEquals(
-      accountWitness.calculateRoot(accountState.hash())
+      accountWitness.computeRootAndKey(accountState.hash())[0]
     );
 
     // Make sure user has enough funds to release.
@@ -231,7 +217,7 @@ export class AccountManagement extends SmartContract {
 
   @method processReleaseFundsRequest(
     accountState: Account,
-    accountWitness: AccountWitness
+    accountWitness: MerkleMapWitness
   ) {
     /* Validate that the provided witness comes from the tree we are
      * committed to on-chain.
@@ -239,7 +225,7 @@ export class AccountManagement extends SmartContract {
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
     accountsRoot.assertEquals(
-      accountWitness.calculateRoot(accountState.hash())
+      accountWitness.computeRootAndKey(accountState.hash())[0]
     );
 
     /* Get the action to be processed, and associated data with this operation.
@@ -260,7 +246,9 @@ export class AccountManagement extends SmartContract {
     newAccountState.released = UInt64.from(0);
 
     // Update the merkle tree root with the new account state.
-    this.accountsRoot.set(accountWitness.calculateRoot(newAccountState.hash()));
+    this.accountsRoot.set(
+      accountWitness.computeRootAndKey(newAccountState.hash())[0]
+    );
 
     /* Advance to the turn of the next action to be processed, and decrease the
      * number of pending actions to account for the one we processed.
@@ -274,14 +262,14 @@ export class AccountManagement extends SmartContract {
 
   @method addFundsRequest(
     accountState: Account,
-    accountWitness: AccountWitness,
+    accountWitness: MerkleMapWitness,
     amount: UInt64
   ) {
     // Validate that the account state is within our on-chain tree.
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
     accountsRoot.assertEquals(
-      accountWitness.calculateRoot(accountState.hash())
+      accountWitness.computeRootAndKey(accountState.hash())[0]
     );
 
     // Require the signature of the user.
@@ -301,7 +289,7 @@ export class AccountManagement extends SmartContract {
 
   @method processAddFundsRequest(
     accountState: Account,
-    accountWitness: AccountWitness
+    accountWitness: MerkleMapWitness
   ) {
     /* Validate that the provided witness comes from the tree we are
      * committed to on-chain.
@@ -309,7 +297,7 @@ export class AccountManagement extends SmartContract {
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
     accountsRoot.assertEquals(
-      accountWitness.calculateRoot(accountState.hash())
+      accountWitness.computeRootAndKey(accountState.hash())[0]
     );
 
     /* Get the action to be processed, and associated data with this operation.
@@ -325,7 +313,9 @@ export class AccountManagement extends SmartContract {
     let newAccountState = new Account(action);
 
     // Update the merkle tree root with the new account state.
-    this.accountsRoot.set(accountWitness.calculateRoot(newAccountState.hash()));
+    this.accountsRoot.set(
+      accountWitness.computeRootAndKey(newAccountState.hash())[0]
+    );
 
     /* Advance to the turn of the next action to be processed, and decrease the
      * number of pending actions to account for the one we processed.
@@ -368,11 +358,6 @@ export class AccountManagement extends SmartContract {
             action.publicKey,
             state.publicKey
           ),
-          accountNumber: Circuit.if(
-            isCurrentAction,
-            action.accountNumber,
-            state.accountNumber
-          ),
           balance: Circuit.if(isCurrentAction, action.balance, state.balance),
           actionOrigin: Circuit.if(
             isCurrentAction,
@@ -389,7 +374,6 @@ export class AccountManagement extends SmartContract {
       {
         state: {
           publicKey: PublicKey.empty(),
-          accountNumber: Field(0),
           balance: UInt64.from(0),
           actionOrigin: UInt32.from(0),
           released: UInt64.from(0),

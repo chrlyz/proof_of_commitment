@@ -7,16 +7,17 @@ import {
   AccountUpdate,
   Reducer,
   Field,
-  MerkleTree,
   UInt64,
   UInt32,
+  MerkleMap,
+  MerkleMapWitness,
+  Poseidon,
 } from 'snarkyjs';
 
 import { Account } from './Account.js';
 
 import {
   AccountManagement,
-  AccountWitness,
   root,
   initialBalance,
   signUpMethodID,
@@ -39,7 +40,7 @@ describe('AccountManagement', () => {
     user2PublicKey: PublicKey,
     user1AsAccount: Account,
     user2AsAccount: Account,
-    tree: MerkleTree;
+    tree: MerkleMap;
 
   beforeAll(async () => {
     await isReady;
@@ -60,19 +61,17 @@ describe('AccountManagement', () => {
     user2PublicKey = user2PrivateKey.toPublicKey();
     user1AsAccount = new Account({
       publicKey: user1PublicKey,
-      accountNumber: Field(1),
       balance: initialBalance,
       actionOrigin: UInt32.from(0),
       released: UInt64.from(0),
     });
     user2AsAccount = new Account({
       publicKey: user2PublicKey,
-      accountNumber: Field(2),
       balance: initialBalance,
       actionOrigin: UInt32.from(0),
       released: UInt64.from(0),
     });
-    tree = new MerkleTree(21);
+    tree = new MerkleMap();
   });
 
   afterAll(() => {
@@ -96,17 +95,17 @@ describe('AccountManagement', () => {
 
   async function processSignUpAction(action: Account) {
     action.actionOrigin.assertEquals(signUpMethodID);
-    action.accountNumber = zkApp.accountNumber.get();
-    tree.setLeaf(action.accountNumber.toBigInt(), action.hash());
-    let aw = tree.getWitness(action.accountNumber.toBigInt());
-    let accountWitness = new AccountWitness(aw);
+    tree.set(Poseidon.hash(action.publicKey.toFields()), action.hash());
+    let accountWitness = tree.getWitness(
+      Poseidon.hash(action.publicKey.toFields())
+    );
 
     const txn = await Mina.transaction(deployerPublicKey, () => {
       zkApp.processSignUpRequestAction(accountWitness);
     });
     await txn.prove();
     await txn.sign([deployerPrivateKey]).send();
-    return { actionWithAccountNumber: action, accountWitness: accountWitness };
+    return { action: action, accountWitness: accountWitness };
   }
 
   function getActionsRange() {
@@ -150,7 +149,7 @@ describe('AccountManagement', () => {
   async function doReleaseFundsRequestTxn(
     releaser: PrivateKey,
     releaserAccount: Account,
-    accountWitness: AccountWitness,
+    accountWitness: MerkleMapWitness,
     amount: UInt64
   ) {
     const txn = await Mina.transaction(releaser.toPublicKey(), () => {
@@ -180,9 +179,10 @@ describe('AccountManagement', () => {
     action.actionOrigin.assertEquals(releaseFundsRequestMethodID);
     action.balance = action.balance.sub(action.released);
     action.released = UInt64.from(0);
-    tree.setLeaf(action.accountNumber.toBigInt(), action.hash());
-    let aw = tree.getWitness(action.accountNumber.toBigInt());
-    let accountWitness = new AccountWitness(aw);
+    tree.set(Poseidon.hash(action.publicKey.toFields()), action.hash());
+    let accountWitness = tree.getWitness(
+      Poseidon.hash(action.publicKey.toFields())
+    );
 
     const txn = await Mina.transaction(deployerPublicKey, () => {
       zkApp.processReleaseFundsRequest(accountState, accountWitness);
@@ -194,7 +194,7 @@ describe('AccountManagement', () => {
   async function doAddFundsRequestTxn(
     funder: PrivateKey,
     funderAccount: Account,
-    accountWitness: AccountWitness,
+    accountWitness: MerkleMapWitness,
     amount: UInt64
   ) {
     const txn = await Mina.transaction(funder.toPublicKey(), () => {
@@ -215,9 +215,10 @@ describe('AccountManagement', () => {
 
   async function processAddFundsAction(action: Account, accountState: Account) {
     action.actionOrigin.assertEquals(addFundsRequestMethodID);
-    tree.setLeaf(action.accountNumber.toBigInt(), action.hash());
-    let aw = tree.getWitness(action.accountNumber.toBigInt());
-    let accountWitness = new AccountWitness(aw);
+    tree.set(Poseidon.hash(action.publicKey.toFields()), action.hash());
+    let accountWitness = tree.getWitness(
+      Poseidon.hash(action.publicKey.toFields())
+    );
 
     const txn = await Mina.transaction(deployerPublicKey, () => {
       zkApp.processAddFundsRequest(accountState, accountWitness);
@@ -230,7 +231,6 @@ describe('AccountManagement', () => {
     await localDeploy();
 
     const startOfAllActions = zkApp.startOfAllActions.get();
-    const accountNumber = zkApp.accountNumber.get();
     const numberOfPendingActions = zkApp.numberOfPendingActions.get();
     const actionTurn = zkApp.actionTurn.get();
     const startOfActionsRange = zkApp.startOfActionsRange.get();
@@ -238,7 +238,6 @@ describe('AccountManagement', () => {
     const accountsRoot = zkApp.accountsRoot.get();
 
     expect(startOfAllActions).toEqual(Reducer.initialActionsHash);
-    expect(accountNumber).toEqual(Field(1));
     expect(numberOfPendingActions).toEqual(Field(0));
     expect(actionTurn).toEqual(Field(0));
     expect(startOfActionsRange).toEqual(Reducer.initialActionsHash);
@@ -255,7 +254,6 @@ describe('AccountManagement', () => {
 
     expect(actions.length).toEqual(1);
     expect(actions[0].publicKey).toEqual(user1PublicKey);
-    expect(actions[0].accountNumber).toEqual(Field(0));
     expect(actions[0].balance).toEqual(initialBalance);
     expect(actions[0].actionOrigin).toEqual(signUpMethodID);
   });
@@ -270,11 +268,9 @@ describe('AccountManagement', () => {
 
     expect(actions.length).toEqual(2);
     expect(actions[0].publicKey).toEqual(user1PublicKey);
-    expect(actions[0].accountNumber).toEqual(Field(0));
     expect(actions[0].balance).toEqual(initialBalance);
     expect(actions[0].actionOrigin).toEqual(signUpMethodID);
     expect(actions[1].publicKey).toEqual(user2PublicKey);
-    expect(actions[1].accountNumber).toEqual(Field(0));
     expect(actions[1].balance).toEqual(initialBalance);
     expect(actions[1].actionOrigin).toEqual(signUpMethodID);
   });
@@ -362,9 +358,15 @@ describe('AccountManagement', () => {
     user1AsAccount.actionOrigin = signUpMethodID;
     user2AsAccount.actionOrigin = signUpMethodID;
 
-    let expectedTree = new MerkleTree(21);
-    expectedTree.setLeaf(1n, user1AsAccount.hash());
-    expectedTree.setLeaf(2n, user2AsAccount.hash());
+    let expectedTree = new MerkleMap();
+    expectedTree.set(
+      Poseidon.hash(user1AsAccount.publicKey.toFields()),
+      user1AsAccount.hash()
+    );
+    expectedTree.set(
+      Poseidon.hash(user2AsAccount.publicKey.toFields()),
+      user2AsAccount.hash()
+    );
     const expectedTreeRoot = expectedTree.getRoot();
 
     expect(zkApp.accountsRoot.get()).toEqual(expectedTreeRoot);
@@ -380,8 +382,11 @@ describe('AccountManagement', () => {
     await doSetActionsRangeTxn();
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    let expectedTree = new MerkleTree(21);
-    expectedTree.setLeaf(1n, user1AsAccount.hash());
+    let expectedTree = new MerkleMap();
+    expectedTree.set(
+      Poseidon.hash(user1AsAccount.publicKey.toFields()),
+      user1AsAccount.hash()
+    );
     const expectedTreeRoot1 = expectedTree.getRoot();
 
     const range1 = getActionsRange();
@@ -397,7 +402,10 @@ describe('AccountManagement', () => {
     await doSetActionsRangeTxn();
 
     user2AsAccount.actionOrigin = signUpMethodID;
-    expectedTree.setLeaf(2n, user2AsAccount.hash());
+    expectedTree.set(
+      Poseidon.hash(user2AsAccount.publicKey.toFields()),
+      user2AsAccount.hash()
+    );
     const expectedTreeRoot2 = expectedTree.getRoot();
 
     const range2 = getActionsRange();
@@ -410,44 +418,29 @@ describe('AccountManagement', () => {
     expect(zkApp.actionTurn.get()).toEqual(Field(1));
   });
 
-  test(`executing processSignUpRequestAction by feeding it a witness from an
-  account set in the merkle tree with an index not corresponding to the account
-  number should throw an error`, async () => {
-    await localDeploy();
-    await doSignUpTxn(user1PrivateKey);
-    await doSetActionsRangeTxn();
-
-    tree.setLeaf(3n, user1AsAccount.hash());
-    let aw = tree.getWitness(3n);
-    let accountWitness = new AccountWitness(aw);
-
-    expect(async () => {
-      zkApp.processSignUpRequestAction(accountWitness);
-    }).rejects.toThrowError('assert_equal: 1 != 3');
-  });
-
   test(`Trying to process an action not emitted by requestSignUp, with
   processSignUpRequestAction throws the expected error`, async () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
-    const range = getActionsRange();
-    const { actionWithAccountNumber, accountWitness } =
-      await processSignUpAction(range.actions[0]);
+    const range1 = getActionsRange();
+    const { action, accountWitness } = await processSignUpAction(
+      range1.actions[0]
+    );
 
     await doReleaseFundsRequestTxn(
       user1PrivateKey,
-      actionWithAccountNumber,
+      action,
       accountWitness,
       UInt64.from(1_000_000_000)
     );
-    await doSetActionsRangeTxn();
 
-    const user2AccountNumber = zkApp.accountNumber.get().toBigInt();
-    const aw2 = tree.getWitness(user2AccountNumber);
-    const accountWitness2 = new AccountWitness(aw2);
+    await doSetActionsRangeTxn();
+    let user2AccountWitness = tree.getWitness(
+      Poseidon.hash(user2PublicKey.toFields())
+    );
     expect(async () => {
-      zkApp.processSignUpRequestAction(accountWitness2);
+      zkApp.processSignUpRequestAction(user2AccountWitness);
     }).rejects.toThrowError('assert_equal: 2 != 1');
   });
 
@@ -470,42 +463,43 @@ describe('AccountManagement', () => {
     );
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw1 = tree.getWitness(1n);
-    const accountWitness1 = new AccountWitness(aw1);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
     await doReleaseFundsRequestTxn(
       user1PrivateKey,
       user1AsAccount,
-      accountWitness1,
+      user1AccountWitness,
       UInt64.from(1_000_000_000)
     );
 
     user2AsAccount.actionOrigin = signUpMethodID;
-    const aw2 = tree.getWitness(2n);
-    const accountWitness2 = new AccountWitness(aw2);
+    let user2AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[1].publicKey.toFields())
+    );
     await doReleaseFundsRequestTxn(
       user2PrivateKey,
       user2AsAccount,
-      accountWitness2,
+      user2AccountWitness,
       UInt64.from(2_500_000_000)
     );
 
     await doSetActionsRangeTxn();
-    const range2 = getActionsRange();
+    const range3 = getActionsRange();
 
-    expect(range2.actions[0]).toEqual(
+    expect(range3.actions[0]).toEqual(
       new Account({
         publicKey: user1AsAccount.publicKey,
-        accountNumber: user1AsAccount.accountNumber,
         balance: initialBalance,
         actionOrigin: releaseFundsRequestMethodID,
         released: UInt64.from(1_000_000_000),
       })
     );
 
-    expect(range2.actions[1]).toEqual(
+    expect(range3.actions[1]).toEqual(
       new Account({
         publicKey: user2AsAccount.publicKey,
-        accountNumber: user2AsAccount.accountNumber,
         balance: initialBalance,
         actionOrigin: releaseFundsRequestMethodID,
         released: UInt64.from(2_500_000_000),
@@ -517,17 +511,19 @@ describe('AccountManagement', () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
-    const range = getActionsRange();
-    await processSignUpAction(range.actions[0]);
+    const range1 = getActionsRange();
+    await processSignUpAction(range1.actions[0]);
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw = tree.getWitness(1n);
-    const accountWitness = new AccountWitness(aw);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
 
     const txn = await Mina.transaction(user1PublicKey, () => {
       zkApp.releaseFundsRequest(
         user1AsAccount,
-        accountWitness,
+        user1AccountWitness,
         UInt64.from(4_000_000_000)
       );
     });
@@ -586,18 +582,20 @@ describe('AccountManagement', () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
-    const range = getActionsRange();
-    await processSignUpAction(range.actions[0]);
+    const range1 = getActionsRange();
+    await processSignUpAction(range1.actions[0]);
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw = tree.getWitness(1n);
-    const accountWitness = new AccountWitness(aw);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
 
     expect(async () => {
       await doReleaseFundsRequestTxn(
         user1PrivateKey,
         user1AsAccount,
-        accountWitness,
+        user1AccountWitness,
         UInt64.from(6_666_666_666)
       );
     }).rejects.toThrowError(/Expected [0-9]+ to fit in 64 bits/);
@@ -624,30 +622,33 @@ describe('AccountManagement', () => {
     );
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw1 = tree.getWitness(1n);
-    const accountWitness1 = new AccountWitness(aw1);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
     await doReleaseFundsRequestTxn(
       user1PrivateKey,
       user1AsAccount,
-      accountWitness1,
+      user1AccountWitness,
       UInt64.from(1_000_000_000)
     );
 
     user2AsAccount.actionOrigin = signUpMethodID;
-    const aw2 = tree.getWitness(2n);
-    const accountWitness2 = new AccountWitness(aw2);
+    let user2AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[1].publicKey.toFields())
+    );
     await doReleaseFundsRequestTxn(
       user2PrivateKey,
       user2AsAccount,
-      accountWitness2,
+      user2AccountWitness,
       UInt64.from(2_500_000_000)
     );
 
     const initialRoot = zkApp.accountsRoot.get();
     await doSetActionsRangeTxn();
-    const range2 = getActionsRange();
-    await processReleaseFundsAction(range2.actions[0], user1AsAccount);
-    await processReleaseFundsAction(range2.actions[1], user2AsAccount);
+    const range3 = getActionsRange();
+    await processReleaseFundsAction(range3.actions[0], user1AsAccount);
+    await processReleaseFundsAction(range3.actions[1], user2AsAccount);
 
     expect(initialRoot).not.toEqual(zkApp.accountsRoot.get());
     expect(Mina.getBalance(zkAppAddress)).toEqual(
@@ -678,19 +679,21 @@ describe('AccountManagement', () => {
     );
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw1 = tree.getWitness(1n);
-    const accountWitness1 = new AccountWitness(aw1);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
     await doReleaseFundsRequestTxn(
       user1PrivateKey,
       user1AsAccount,
-      accountWitness1,
+      user1AccountWitness,
       UInt64.from(3_333_333_333)
     );
 
     const initialRoot1 = zkApp.accountsRoot.get();
     await doSetActionsRangeTxn();
-    const range2 = getActionsRange();
-    await processReleaseFundsAction(range2.actions[0], user1AsAccount);
+    const range3 = getActionsRange();
+    await processReleaseFundsAction(range3.actions[0], user1AsAccount);
 
     expect(initialRoot1).not.toEqual(zkApp.accountsRoot.get());
     expect(Mina.getBalance(zkAppAddress)).toEqual(
@@ -701,19 +704,20 @@ describe('AccountManagement', () => {
     );
 
     user2AsAccount.actionOrigin = signUpMethodID;
-    const aw2 = tree.getWitness(2n);
-    const accountWitness2 = new AccountWitness(aw2);
+    let user2AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[1].publicKey.toFields())
+    );
     await doReleaseFundsRequestTxn(
       user2PrivateKey,
       user2AsAccount,
-      accountWitness2,
+      user2AccountWitness,
       UInt64.from(1_111_111_111)
     );
 
     const initialRoot2 = zkApp.accountsRoot.get();
     await doSetActionsRangeTxn();
-    const range3 = getActionsRange();
-    await processReleaseFundsAction(range3.actions[0], user2AsAccount);
+    const range4 = getActionsRange();
+    await processReleaseFundsAction(range4.actions[0], user2AsAccount);
 
     expect(initialRoot2).not.toEqual(zkApp.accountsRoot.get());
     expect(Mina.getBalance(zkAppAddress)).toEqual(
@@ -762,12 +766,14 @@ describe('AccountManagement', () => {
     );
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw1 = tree.getWitness(1n);
-    const accountWitness1 = new AccountWitness(aw1);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
     await doAddFundsRequestTxn(
       user1PrivateKey,
       user1AsAccount,
-      accountWitness1,
+      user1AccountWitness,
       UInt64.from(1_000_000_000)
     );
 
@@ -776,12 +782,13 @@ describe('AccountManagement', () => {
     );
 
     user2AsAccount.actionOrigin = signUpMethodID;
-    const aw2 = tree.getWitness(2n);
-    const accountWitness2 = new AccountWitness(aw2);
+    let user2AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[1].publicKey.toFields())
+    );
     await doAddFundsRequestTxn(
       user2PrivateKey,
       user2AsAccount,
-      accountWitness2,
+      user2AccountWitness,
       UInt64.from(2_500_000_000)
     );
 
@@ -790,21 +797,19 @@ describe('AccountManagement', () => {
     );
 
     await doSetActionsRangeTxn();
-    const range2 = getActionsRange();
+    const range3 = getActionsRange();
 
-    expect(range2.actions[0]).toEqual(
+    expect(range3.actions[0]).toEqual(
       new Account({
         publicKey: user1AsAccount.publicKey,
-        accountNumber: user1AsAccount.accountNumber,
         balance: initialBalance.add(1_000_000_000),
         actionOrigin: addFundsRequestMethodID,
         released: UInt64.from(0),
       })
     );
-    expect(range2.actions[1]).toEqual(
+    expect(range3.actions[1]).toEqual(
       new Account({
         publicKey: user2AsAccount.publicKey,
-        accountNumber: user2AsAccount.accountNumber,
         balance: initialBalance.add(2_500_000_000),
         actionOrigin: addFundsRequestMethodID,
         released: UInt64.from(0),
@@ -816,17 +821,19 @@ describe('AccountManagement', () => {
     await localDeploy();
     await doSignUpTxn(user1PrivateKey);
     await doSetActionsRangeTxn();
-    const range = getActionsRange();
-    await processSignUpAction(range.actions[0]);
+    const range1 = getActionsRange();
+    await processSignUpAction(range1.actions[0]);
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw = tree.getWitness(1n);
-    const accountWitness = new AccountWitness(aw);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
 
     const txn = await Mina.transaction(user1PublicKey, () => {
       zkApp.addFundsRequest(
         user1AsAccount,
-        accountWitness,
+        user1AccountWitness,
         UInt64.from(4_000_000_000)
       );
     });
@@ -850,31 +857,34 @@ describe('AccountManagement', () => {
     }
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw1 = tree.getWitness(1n);
-    const accountWitness1 = new AccountWitness(aw1);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
     await doAddFundsRequestTxn(
       user1PrivateKey,
       user1AsAccount,
-      accountWitness1,
+      user1AccountWitness,
       UInt64.from(1_000_000_000)
     );
 
     user2AsAccount.actionOrigin = signUpMethodID;
-    const aw2 = tree.getWitness(2n);
-    const accountWitness2 = new AccountWitness(aw2);
+    let user2AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[1].publicKey.toFields())
+    );
     await doAddFundsRequestTxn(
       user2PrivateKey,
       user2AsAccount,
-      accountWitness2,
+      user2AccountWitness,
       UInt64.from(2_500_000_000)
     );
 
     const initialRoot = zkApp.accountsRoot.get();
 
     await doSetActionsRangeTxn();
-    const range2 = getActionsRange();
-    await processAddFundsAction(range2.actions[0], user1AsAccount);
-    await processAddFundsAction(range2.actions[1], user2AsAccount);
+    const range3 = getActionsRange();
+    await processAddFundsAction(range3.actions[0], user1AsAccount);
+    await processAddFundsAction(range3.actions[1], user2AsAccount);
 
     expect(initialRoot).not.toEqual(zkApp.accountsRoot.get());
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
@@ -901,38 +911,42 @@ describe('AccountManagement', () => {
     );
 
     user1AsAccount.actionOrigin = signUpMethodID;
-    const aw1 = tree.getWitness(1n);
-    const accountWitness1 = new AccountWitness(aw1);
+    const range2 = getActionsRange();
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[0].publicKey.toFields())
+    );
     await doAddFundsRequestTxn(
       user1PrivateKey,
       user1AsAccount,
-      accountWitness1,
+      user1AccountWitness,
       UInt64.from(3_333_333_333)
     );
 
     const initialRoot1 = zkApp.accountsRoot.get();
     await doSetActionsRangeTxn();
-    const range2 = getActionsRange();
-    await processAddFundsAction(range2.actions[0], user1AsAccount);
+    const range3 = getActionsRange();
+    await processAddFundsAction(range3.actions[0], user1AsAccount);
 
     expect(initialRoot1).not.toEqual(zkApp.accountsRoot.get());
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
     expect(zkApp.actionTurn.get()).toEqual(Field(1));
 
     user2AsAccount.actionOrigin = signUpMethodID;
-    const aw2 = tree.getWitness(2n);
-    const accountWitness2 = new AccountWitness(aw2);
+    user2AsAccount.actionOrigin = signUpMethodID;
+    let user2AccountWitness = tree.getWitness(
+      Poseidon.hash(range2.actions[1].publicKey.toFields())
+    );
     await doAddFundsRequestTxn(
       user2PrivateKey,
       user2AsAccount,
-      accountWitness2,
+      user2AccountWitness,
       UInt64.from(1_111_111_111)
     );
 
     const initialRoot2 = zkApp.accountsRoot.get();
     await doSetActionsRangeTxn();
-    const range3 = getActionsRange();
-    await processAddFundsAction(range3.actions[0], user2AsAccount);
+    const range4 = getActionsRange();
+    await processAddFundsAction(range4.actions[0], user2AsAccount);
 
     expect(initialRoot2).not.toEqual(zkApp.accountsRoot.get());
     expect(zkApp.numberOfPendingActions.get()).toEqual(Field(0));
