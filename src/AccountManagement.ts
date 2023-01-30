@@ -9,7 +9,6 @@ import {
   PublicKey,
   State,
   state,
-  Bool,
   AccountUpdate,
   Circuit,
   UInt64,
@@ -22,10 +21,9 @@ import { Account } from './Account.js';
 
 await isReady;
 
-export const initialBalance = UInt64.from(5_000_000_000);
-export const signUpMethodID = UInt32.from(1);
+export const signUpRequestID = UInt32.from(0);
+export const addFundsRequestMethodID = UInt32.from(1);
 export const releaseFundsRequestMethodID = UInt32.from(2);
-export const addFundsRequestMethodID = UInt32.from(3);
 const tree = new MerkleMap();
 export const root = tree.getRoot();
 
@@ -39,7 +37,6 @@ export const serviceProviderAddress = PublicKey.fromBase58(
 export class AccountManagement extends SmartContract {
   reducer = Reducer({ actionType: Account });
 
-  @state(Field) startOfAllActions = State<Field>();
   @state(Field) numberOfPendingActions = State<Field>();
   @state(Field) actionTurn = State<Field>();
   @state(Field) startOfActionsRange = State<Field>();
@@ -52,7 +49,6 @@ export class AccountManagement extends SmartContract {
       ...Permissions.default(),
       send: Permissions.proof(),
     });
-    this.startOfAllActions.set(Reducer.initialActionsHash);
     this.numberOfPendingActions.set(Field(0));
     this.actionTurn.set(Field(0));
     this.startOfActionsRange.set(Reducer.initialActionsHash);
@@ -60,45 +56,89 @@ export class AccountManagement extends SmartContract {
     this.accountsRoot.set(root);
   }
 
-  @method requestSignUp(publicKey: PublicKey) {
-    /* User sends 5 MINA to be able to start using the service
-     * immediately after signing-up (This allows sevice providers
-     * to see that the user has funds, so they have the
-     * incentive to serve the user).
+  @method signUpRequest(
+    publicKey: PublicKey,
+    accountWitness: MerkleMapWitness
+  ) {
+    /* Validate that the account hasn't been registered, and that the provided
+     * witness comes from the tree we are committed to on-chain.
+     */
+    const accountsRoot = this.accountsRoot.get();
+    this.accountsRoot.assertEquals(accountsRoot);
+    accountsRoot.assertEquals(accountWitness.computeRootAndKey(Field(0))[0]);
+
+    /* Emit a signUpRequest action with the public key of the user (require
+     * the signature of the user to sign-up, so only the user can register
+     * their account).
      */
 
-    let accountUpdate = AccountUpdate.create(publicKey);
-    accountUpdate.send({ to: this.address, amount: initialBalance });
+    const accountUpdate = AccountUpdate.create(publicKey);
+    accountUpdate.requireSignature();
 
-    /* Check all actions to see if the public key isn't
-     * already registered. If not, emit action representing
-     * the sign-up request.
-     */
-    const startOfAllActions = this.startOfAllActions.get();
-    this.startOfAllActions.assertEquals(startOfAllActions);
-
-    const actions = this.reducer.getActions({
-      fromActionHash: startOfAllActions,
-    });
-
-    let { state: exists } = this.reducer.reduce(
-      actions,
-      Bool,
-      (state, action) => {
-        return action.publicKey.equals(publicKey).or(state);
-      },
-      { state: Bool(false), actionsHash: startOfAllActions }
-    );
-
-    exists.assertEquals(Bool(false));
-
-    let account = new Account({
+    const initialAccountState = new Account({
       publicKey: publicKey,
-      balance: initialBalance,
-      actionOrigin: signUpMethodID,
+      balance: UInt64.from(0),
+      actionOrigin: UInt32.from(0),
       released: UInt64.from(0),
     });
-    this.reducer.dispatch(account);
+
+    this.reducer.dispatch(initialAccountState);
+  }
+
+  @method addFundsRequest(
+    accountState: Account,
+    accountWitness: MerkleMapWitness,
+    amount: UInt64
+  ) {
+    // Validate that the account state is within our on-chain tree.
+    const accountsRoot = this.accountsRoot.get();
+    this.accountsRoot.assertEquals(accountsRoot);
+    accountsRoot.assertEquals(
+      accountWitness.computeRootAndKey(accountState.hash())[0]
+    );
+
+    // Require the signature of the user.
+    let accountUpdate = AccountUpdate.create(accountState.publicKey);
+    accountUpdate.send({ to: this.address, amount: amount });
+
+    /* Assign proper actionOrigin in a new account state, and the new balance
+     * after adding the funds.
+     */
+    let newAccountState = new Account(accountState);
+    newAccountState.actionOrigin = addFundsRequestMethodID;
+    newAccountState.balance = accountState.balance.add(amount);
+
+    // Dispatch the new state of the account.
+    this.reducer.dispatch(newAccountState);
+  }
+
+  @method releaseFundsRequest(
+    accountState: Account,
+    accountWitness: MerkleMapWitness,
+    amount: UInt64
+  ) {
+    // Validate that the account state is within our on-chain tree.
+    const accountsRoot = this.accountsRoot.get();
+    this.accountsRoot.assertEquals(accountsRoot);
+    accountsRoot.assertEquals(
+      accountWitness.computeRootAndKey(accountState.hash())[0]
+    );
+
+    // Make sure user has enough funds to release.
+    amount.assertLte(accountState.balance);
+
+    // Require the signature of the user.
+    AccountUpdate.create(accountState.publicKey).requireSignature();
+
+    /* Assign proper actionOrigin in a new account state, and the amount of
+     * funds to be released.
+     */
+    let newAccountState = new Account(accountState);
+    newAccountState.actionOrigin = releaseFundsRequestMethodID;
+    newAccountState.released = amount;
+
+    // Dispatch the new state of the account.
+    this.reducer.dispatch(newAccountState);
   }
 
   @method setRangeOfActionsToBeProcessed() {
@@ -151,30 +191,34 @@ export class AccountManagement extends SmartContract {
     this.endOfActionsRange.set(newEndOfActionsRange);
   }
 
-  @method processSignUpRequestAction(accountWitness: MerkleMapWitness) {
-    /* Validate that the provided witness comes from the tree we are
-     * committed to on-chain.
+  @method processSignUpRequest(accountWitness: MerkleMapWitness) {
+    /* Check if the account hasn't been registered, and that the provided
+     * witness comes from the tree we are committed to on-chain.
      */
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
-    accountsRoot.assertEquals(accountWitness.computeRootAndKey(Field(0))[0]);
+    const isSignedUp = accountsRoot
+      .equals(accountWitness.computeRootAndKey(Field(0))[0])
+      .not();
 
     /* Get the action to be processed, and associated data with this operation.
      * Then check that the action was emitted by the corresponding method.
      */
     const actionWithMetadata = this.getCurrentAction();
     const action = actionWithMetadata.action;
-    action.actionOrigin.assertEquals(signUpMethodID);
+    action.actionOrigin.assertEquals(signUpRequestID);
 
-    // Type accountState as Account.
-    let accountState = new Account(action);
+    const initialAccountState = new Account(action);
 
-    /* Update the merkle tree root, so it includes the new registered
-     * account.
+    /* Update the merkle tree root with the correct account state (keeping the
+     * current root value if the user already signed-up, or updating with the
+     * new root value if the user hasn't signed-up).
      */
-    this.accountsRoot.set(
-      accountWitness.computeRootAndKey(accountState.hash())[0]
-    );
+    const newRoot = accountWitness.computeRootAndKey(
+      initialAccountState.hash()
+    )[0];
+    const chosenRoot = Circuit.if(isSignedUp, accountsRoot, newRoot);
+    this.accountsRoot.set(chosenRoot);
 
     /* Advance to the turn of the next action to be processed, and decrease the
      * number of pending actions to account for the one we processed.
@@ -186,33 +230,44 @@ export class AccountManagement extends SmartContract {
     this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
   }
 
-  @method releaseFundsRequest(
+  @method processAddFundsRequest(
     accountState: Account,
-    accountWitness: MerkleMapWitness,
-    amount: UInt64
+    accountWitness: MerkleMapWitness
   ) {
-    // Validate that the account state is within our on-chain tree.
+    /* Validate that the provided witness comes from the tree we are
+     * committed to on-chain.
+     */
     const accountsRoot = this.accountsRoot.get();
     this.accountsRoot.assertEquals(accountsRoot);
     accountsRoot.assertEquals(
       accountWitness.computeRootAndKey(accountState.hash())[0]
     );
 
-    // Make sure user has enough funds to release.
-    amount.assertLte(accountState.balance);
-
-    // Require the signature of the user.
-    AccountUpdate.create(accountState.publicKey).requireSignature();
-
-    /* Assign proper actionOrigin in a new account state, and the amount of
-     * funds to be released.
+    /* Get the action to be processed, and associated data with this operation.
+     * Then check that the action was emitted by the corresponding method.
      */
-    let newAccountState = new Account(accountState);
-    newAccountState.actionOrigin = releaseFundsRequestMethodID;
-    newAccountState.released = amount;
+    const actionWithMetadata = this.getCurrentAction();
+    const action = actionWithMetadata.action;
+    action.actionOrigin.assertEquals(addFundsRequestMethodID);
 
-    // Dispatch the new state of the account.
-    this.reducer.dispatch(newAccountState);
+    /* Assign new balance after substracting the released amount, and reset
+     * released amount.
+     */
+    let newAccountState = new Account(action);
+
+    // Update the merkle tree root with the new account state.
+    this.accountsRoot.set(
+      accountWitness.computeRootAndKey(newAccountState.hash())[0]
+    );
+
+    /* Advance to the turn of the next action to be processed, and decrease the
+     * number of pending actions to account for the one we processed.
+     */
+    this.actionTurn.set(actionWithMetadata.actionTurn.add(1));
+
+    const numberOfPendingActions = this.numberOfPendingActions.get();
+    this.numberOfPendingActions.assertEquals(numberOfPendingActions);
+    this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
   }
 
   @method processReleaseFundsRequest(
@@ -244,73 +299,6 @@ export class AccountManagement extends SmartContract {
     let newAccountState = new Account(action);
     newAccountState.balance = action.balance.sub(action.released);
     newAccountState.released = UInt64.from(0);
-
-    // Update the merkle tree root with the new account state.
-    this.accountsRoot.set(
-      accountWitness.computeRootAndKey(newAccountState.hash())[0]
-    );
-
-    /* Advance to the turn of the next action to be processed, and decrease the
-     * number of pending actions to account for the one we processed.
-     */
-    this.actionTurn.set(actionWithMetadata.actionTurn.add(1));
-
-    const numberOfPendingActions = this.numberOfPendingActions.get();
-    this.numberOfPendingActions.assertEquals(numberOfPendingActions);
-    this.numberOfPendingActions.set(numberOfPendingActions.sub(Field(1)));
-  }
-
-  @method addFundsRequest(
-    accountState: Account,
-    accountWitness: MerkleMapWitness,
-    amount: UInt64
-  ) {
-    // Validate that the account state is within our on-chain tree.
-    const accountsRoot = this.accountsRoot.get();
-    this.accountsRoot.assertEquals(accountsRoot);
-    accountsRoot.assertEquals(
-      accountWitness.computeRootAndKey(accountState.hash())[0]
-    );
-
-    // Require the signature of the user.
-    let accountUpdate = AccountUpdate.create(accountState.publicKey);
-    accountUpdate.send({ to: this.address, amount: amount });
-
-    /* Assign proper actionOrigin in a new account state, and the new balance
-     * after adding the funds.
-     */
-    let newAccountState = new Account(accountState);
-    newAccountState.actionOrigin = addFundsRequestMethodID;
-    newAccountState.balance = accountState.balance.add(amount);
-
-    // Dispatch the new state of the account.
-    this.reducer.dispatch(newAccountState);
-  }
-
-  @method processAddFundsRequest(
-    accountState: Account,
-    accountWitness: MerkleMapWitness
-  ) {
-    /* Validate that the provided witness comes from the tree we are
-     * committed to on-chain.
-     */
-    const accountsRoot = this.accountsRoot.get();
-    this.accountsRoot.assertEquals(accountsRoot);
-    accountsRoot.assertEquals(
-      accountWitness.computeRootAndKey(accountState.hash())[0]
-    );
-
-    /* Get the action to be processed, and associated data with this operation.
-     * Then check that the action was emitted by the corresponding method.
-     */
-    const actionWithMetadata = this.getCurrentAction();
-    const action = actionWithMetadata.action;
-    action.actionOrigin.assertEquals(addFundsRequestMethodID);
-
-    /* Assign new balance after substracting the released amount, and reset
-     * released amount.
-     */
-    let newAccountState = new Account(action);
 
     // Update the merkle tree root with the new account state.
     this.accountsRoot.set(
