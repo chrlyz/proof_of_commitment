@@ -20,8 +20,8 @@ import {
   AccountManagement,
   root,
   signUpRequestID,
-  addFundsRequestMethodID,
-  releaseFundsRequestMethodID,
+  addFundsRequestID,
+  releaseFundsRequestID,
   serviceProviderAddress,
 } from './AccountManagement.js';
 
@@ -172,7 +172,7 @@ describe('AccountManagement', () => {
   }
 
   async function processAddFundsAction(action: Account, accountState: Account) {
-    action.actionOrigin.assertEquals(addFundsRequestMethodID);
+    action.actionOrigin.assertEquals(addFundsRequestID);
 
     const accountWitness = tree.getWitness(
       Poseidon.hash(accountState.publicKey.toFields())
@@ -185,7 +185,7 @@ describe('AccountManagement', () => {
     await txn.sign([deployerPrivateKey]).send();
 
     accountState.balance = accountState.balance.add(action.balance);
-    accountState.actionOrigin = addFundsRequestMethodID;
+    accountState.actionOrigin = addFundsRequestID;
     tree.set(
       Poseidon.hash(accountState.publicKey.toFields()),
       accountState.hash()
@@ -197,7 +197,7 @@ describe('AccountManagement', () => {
     action: Account,
     accountState: Account
   ) {
-    action.actionOrigin.assertEquals(releaseFundsRequestMethodID);
+    action.actionOrigin.assertEquals(releaseFundsRequestID);
 
     let accountWitness = tree.getWitness(
       Poseidon.hash(accountState.publicKey.toFields())
@@ -211,7 +211,7 @@ describe('AccountManagement', () => {
 
     accountState.balance = action.balance.sub(action.released);
     accountState.released = UInt64.from(0);
-    accountState.actionOrigin = releaseFundsRequestMethodID;
+    accountState.actionOrigin = releaseFundsRequestID;
     tree.set(
       Poseidon.hash(accountState.publicKey.toFields()),
       accountState.hash()
@@ -244,7 +244,7 @@ describe('AccountManagement', () => {
     expect(accountsRoot).toEqual(root);
   });
 
-  it(`emits proper sign-up request action when the requestSignUp method
+  it(`emits proper sign-up request action when the signUpRequest method
   is executed`, async () => {
     await localDeploy();
 
@@ -258,7 +258,7 @@ describe('AccountManagement', () => {
     expect(range.actions[0].released).toEqual(UInt64.from(0));
   });
 
-  it(`throws an error when a requestSignUp transaction is not signed by the
+  it(`throws an error when a signUpRequest transaction is not signed by the
   account requesting to sign-up`, async () => {
     await localDeploy();
     const user1AccountWitness = tree.getWitness(
@@ -274,7 +274,7 @@ describe('AccountManagement', () => {
     }).rejects.toThrowError('private key is missing');
   });
 
-  it(`processing duplicated requestSignUp actions only update the root the
+  it(`processing duplicated signUpRequest actions only update the root the
   first time, and emission of actions and its processing can proceed `, async () => {
     await localDeploy();
     const initialRoot = zkApp.accountsRoot.get();
@@ -321,7 +321,7 @@ describe('AccountManagement', () => {
     expect(accountsRoot).toEqual(root);
   });
 
-  test(`Trying to process an action not emitted by requestSignUp with
+  test(`Trying to process an action not emitted by signUpRequest with
   processSignUpRequest throws the expected error`, async () => {
     await localDeploy();
     await doSignUpRequestTxn(user1PrivateKey);
@@ -340,13 +340,13 @@ describe('AccountManagement', () => {
       UInt64.from(4_000_000_000)
     );
 
-    // Action not emitted by requestSignUp.
+    // Action not emitted by signUpRequest.
     await doSetActionsRangeTxn();
     const range2 = getActionsRange();
     expect(async () => {
       await processSignUpAction(range2.actions[0]);
     }).rejects.toThrowError(
-      `assert_equal: ${addFundsRequestMethodID} != ${signUpRequestID}`
+      `assert_equal: ${addFundsRequestID} != ${signUpRequestID}`
     );
   });
 
@@ -421,7 +421,7 @@ describe('AccountManagement', () => {
     expect(async () => {
       await processAddFundsAction(range.actions[0], user1AsAccount);
     }).rejects.toThrowError(
-      `assert_equal: ${signUpRequestID} != ${addFundsRequestMethodID}`
+      `assert_equal: ${signUpRequestID} != ${addFundsRequestID}`
     );
   });
 
@@ -497,7 +497,7 @@ describe('AccountManagement', () => {
       new Account({
         publicKey: user1AsAccount.publicKey,
         balance: user1AsAccount.balance,
-        actionOrigin: releaseFundsRequestMethodID,
+        actionOrigin: releaseFundsRequestID,
         released: UInt64.from(1_000_000_000),
       })
     );
@@ -506,7 +506,7 @@ describe('AccountManagement', () => {
       new Account({
         publicKey: user2AsAccount.publicKey,
         balance: user2AsAccount.balance,
-        actionOrigin: releaseFundsRequestMethodID,
+        actionOrigin: releaseFundsRequestID,
         released: UInt64.from(2_500_000_000),
       })
     );
@@ -733,7 +733,7 @@ describe('AccountManagement', () => {
     expect(async () => {
       await processReleaseFundsAction(range2.actions[0], user1AsAccount);
     }).rejects.toThrowError(
-      `assert_equal: ${addFundsRequestMethodID} != ${releaseFundsRequestMethodID}`
+      `assert_equal: ${addFundsRequestID} != ${releaseFundsRequestID}`
     );
   });
 });

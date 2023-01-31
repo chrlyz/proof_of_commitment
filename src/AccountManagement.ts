@@ -22,8 +22,8 @@ import { Account } from './Account.js';
 await isReady;
 
 export const signUpRequestID = UInt32.from(0);
-export const addFundsRequestMethodID = UInt32.from(1);
-export const releaseFundsRequestMethodID = UInt32.from(2);
+export const addFundsRequestID = UInt32.from(1);
+export const releaseFundsRequestID = UInt32.from(2);
 const tree = new MerkleMap();
 export const root = tree.getRoot();
 
@@ -105,7 +105,7 @@ export class AccountManagement extends SmartContract {
      * after adding the funds.
      */
     let newAccountState = new Account(accountState);
-    newAccountState.actionOrigin = addFundsRequestMethodID;
+    newAccountState.actionOrigin = addFundsRequestID;
     newAccountState.balance = accountState.balance.add(amount);
 
     // Dispatch the new state of the account.
@@ -134,7 +134,7 @@ export class AccountManagement extends SmartContract {
      * funds to be released.
      */
     let newAccountState = new Account(accountState);
-    newAccountState.actionOrigin = releaseFundsRequestMethodID;
+    newAccountState.actionOrigin = releaseFundsRequestID;
     newAccountState.released = amount;
 
     // Dispatch the new state of the account.
@@ -248,7 +248,7 @@ export class AccountManagement extends SmartContract {
      */
     const actionWithMetadata = this.getCurrentAction();
     const action = actionWithMetadata.action;
-    action.actionOrigin.assertEquals(addFundsRequestMethodID);
+    action.actionOrigin.assertEquals(addFundsRequestID);
 
     /* Assign new balance after substracting the released amount, and reset
      * released amount.
@@ -288,7 +288,7 @@ export class AccountManagement extends SmartContract {
      */
     const actionWithMetadata = this.getCurrentAction();
     const action = actionWithMetadata.action;
-    action.actionOrigin.assertEquals(releaseFundsRequestMethodID);
+    action.actionOrigin.assertEquals(releaseFundsRequestID);
 
     // Send the released funds to service provider.
     this.send({ to: serviceProviderAddress, amount: action.released });
