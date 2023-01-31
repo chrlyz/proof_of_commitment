@@ -386,6 +386,45 @@ describe('AccountManagement', () => {
     expect(range.actions.length).toEqual(expectedNumberOfPendingActions);
   });
 
+  test(`if user doesn't signs an addFundsRequest transaction it fails`, async () => {
+    await localDeploy();
+    await doSignUpRequestTxn(user1PrivateKey);
+    await doSetActionsRangeTxn();
+    const range1 = getActionsRange();
+    await processSignUpAction(range1.actions[0]);
+
+    let user1AccountWitness = tree.getWitness(
+      Poseidon.hash(user1AsAccount.publicKey.toFields())
+    );
+
+    const txn = await Mina.transaction(user1PublicKey, () => {
+      zkApp.addFundsRequest(
+        user1AsAccount,
+        user1AccountWitness,
+        UInt64.from(4_000_000_000)
+      );
+    });
+    await txn.prove();
+
+    expect(async () => {
+      await txn.send();
+    }).rejects.toThrowError('private key is missing');
+  });
+
+  test(`Trying to process an action not emitted by addFundsRequest, with
+  processAddFundsRequest throws the expected error`, async () => {
+    await localDeploy();
+    await doSignUpRequestTxn(user1PrivateKey);
+    await doSetActionsRangeTxn();
+    const range = getActionsRange();
+
+    expect(async () => {
+      await processAddFundsAction(range.actions[0], user1AsAccount);
+    }).rejects.toThrowError(
+      `assert_equal: ${signUpRequestID} != ${addFundsRequestMethodID}`
+    );
+  });
+
   test(`2 releaseFundsRequest actions are properly emitted when
   releaseFundsRequest is executed for 2 accounts with enough funds`, async () => {
     await localDeploy();
@@ -695,45 +734,6 @@ describe('AccountManagement', () => {
       await processReleaseFundsAction(range2.actions[0], user1AsAccount);
     }).rejects.toThrowError(
       `assert_equal: ${addFundsRequestMethodID} != ${releaseFundsRequestMethodID}`
-    );
-  });
-
-  test(`if user doesn't signs an addFundsRequest transaction it fails`, async () => {
-    await localDeploy();
-    await doSignUpRequestTxn(user1PrivateKey);
-    await doSetActionsRangeTxn();
-    const range1 = getActionsRange();
-    await processSignUpAction(range1.actions[0]);
-
-    let user1AccountWitness = tree.getWitness(
-      Poseidon.hash(user1AsAccount.publicKey.toFields())
-    );
-
-    const txn = await Mina.transaction(user1PublicKey, () => {
-      zkApp.addFundsRequest(
-        user1AsAccount,
-        user1AccountWitness,
-        UInt64.from(4_000_000_000)
-      );
-    });
-    await txn.prove();
-
-    expect(async () => {
-      await txn.send();
-    }).rejects.toThrowError('private key is missing');
-  });
-
-  test(`Trying to process an action not emitted by addFundsRequest, with
-  processAddFundsRequest throws the expected error`, async () => {
-    await localDeploy();
-    await doSignUpRequestTxn(user1PrivateKey);
-    await doSetActionsRangeTxn();
-    const range = getActionsRange();
-
-    expect(async () => {
-      await processAddFundsAction(range.actions[0], user1AsAccount);
-    }).rejects.toThrowError(
-      `assert_equal: ${signUpRequestID} != ${addFundsRequestMethodID}`
     );
   });
 });
