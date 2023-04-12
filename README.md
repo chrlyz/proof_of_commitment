@@ -1,16 +1,16 @@
-# Mina zkApp: Swepr Contracts
+# Mina zkApp: swepr-contracts
 
-Proof of Concept of a Mina smart contract that allows the user of a service
-to deposit funds in the contract, so the service provider is able to verify
-that the user has committed funds that can only be accessed by the service
-provider after the user approves it.
+## AccountManagement
 
-This way the service provider has an incentive to service the user, since
-the user has funds in the contract, while the user knows that the service
-provider can't simply run away with the funds without providing the service,
-establishing a relationship of aligned incentives, without the need for paying
-for a Mina transaction and waiting for it to finalize every time the user and
-the service provider interact.
+Mina smart contract that enables users of a service to deposit
+funds in a contract, so the service provider is able to verify
+which users have committed funds to the service, prioritizing
+users accordingly, incentivized to provide a good service
+so users agree to release funds later to the service provider.
+
+The main purpose is to avoid slow and expensive on-chain transactions,
+letting users and the service provider to keep score off-chain, settling
+regularly, cultivating a symbiotic relationship.
 
 ## How to build
 
