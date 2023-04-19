@@ -10,20 +10,26 @@ The main purpose is to avoid slow and expensive on-chain transactions,
 letting users and the service provider to keep score off-chain, settling
 regularly, cultivating a symbiotic relationship.
 
-## How to build
+## Update
+
+```sh
+npm update
+```
+
+## Build
 
 ```sh
 npm run build
 ```
 
-## How to run tests
+## Run tests
 
 ```sh
 npm run test
 npm run testw # watch mode
 ```
 
-## How to run coverage
+## Run coverage
 
 ```sh
 npm run coverage
