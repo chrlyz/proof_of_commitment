@@ -1,6 +1,4 @@
-# Mina zkApp: swepr-contracts
-
-## AccountManagement
+# Proof Of Commitment
 
 Mina smart contract that enables users of a service to deposit
 funds in a contract, so the service provider is able to verify
