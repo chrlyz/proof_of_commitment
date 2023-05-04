@@ -78,7 +78,7 @@ export class AccountManagement extends SmartContract {
     const initialAccountState = new Account({
       publicKey: publicKey,
       balance: UInt64.from(0),
-      actionOrigin: UInt32.from(0),
+      actionOrigin: signUpRequestID,
       released: UInt64.from(0),
     });
 

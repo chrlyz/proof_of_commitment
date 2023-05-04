@@ -10,10 +10,16 @@ The main purpose is to avoid slow and expensive on-chain transactions,
 letting users and the service provider to keep score off-chain, settling
 regularly, cultivating a symbiotic relationship.
 
-## Update
+## Clone
 
 ```sh
-npm update
+git clone git@github.com:chrlyz/proof_of_commitment.git
+```
+
+## Install
+
+```sh
+npm install
 ```
 
 ## Build
